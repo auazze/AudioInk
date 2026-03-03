@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=AudioInk: Fix name & tags
+Comment=Fix audio file names and metadata tags
+Exec=audioink --fix %F
+MimeType=audio/mpeg;audio/flac;audio/ogg;audio/mp4;audio/x-wav;audio/x-ms-wma;audio/opus;
+NoDisplay=true
+Terminal=false
+Categories=AudioVideo;Audio;
