@@ -4,7 +4,7 @@
 
 # AudioInk
 
-Lightweight desktop app that fixes audio file metadata. Parses filenames like `Artist - Song (feat. Someone).mp3` and writes correct ID3/Vorbis tags — artist, title, track number — then saves a clean copy with a proper filename.
+Lightweight desktop app that fixes audio file metadata. Parses filenames like `Artist - Song (feat. Someone).mp3` and writes correct ID3/Vorbis tags — artist, title, track number — then saves a clean copy with a proper filename. Works as a GUI app or headless via `--fix` flag with right-click context menu integration on all platforms.
 
 ## Why
 
@@ -17,16 +17,23 @@ Audio files often have filenames like `01. Tomoya Ohtani-Break Through It All (f
 | `Tomoya Ohtani-Break Through It All (feat. Kellin Quinn).mp3` | `Tomoya Ohtani & Kellin Quinn - Break Through It All.mp3` | Tomoya Ohtani & Kellin Quinn | Break Through It All |
 | `01. Queen - Bohemian Rhapsody (Live).flac` | `Queen - Bohemian Rhapsody (Live).flac` | Queen | Bohemian Rhapsody (Live) |
 | `DJ Snake feat. Lil Jon - Turn Down for What (Remix).mp3` | `DJ Snake & Lil Jon - Turn Down for What (Remix).mp3` | DJ Snake & Lil Jon | Turn Down for What (Remix) |
-| `Кино - Группа крови.mp3` | `Кино - Группа крови.mp3` | Кино | Группа крови |
+| `Кино - Группа крови.mp3` | `Кино - Группа Крови.mp3` | Кино | Группа Крови |
+| `aleksandr_novikov_roza_713893675_456239280.mp3` | `Aleksandr Novikov - Roza.mp3` | Aleksandr Novikov | Roza |
+| `~~~~.mp3` | Manual entry dialog | User-provided | User-provided |
 
 ### Parser handles
 
-- **Separators**: ` - `, ` — `, ` – `, `_-_`, bare dashes
+- **Separators**: ` - `, ` — `, ` – `, `_-_`, `+-+`, `--`, `==`, bare dashes
 - **Featured artists**: `feat.`, `ft.`, `featuring` — merged with `&`
-- **Track numbers**: `01.`, `01 -`, `1.`, `01_` — stripped
+- **Track numbers**: `01.`, `01 -`, `#01`, `01_` — stripped
 - **Extras**: `(Remix)`, `(Live)`, `(Acoustic)`, `[Explicit]` — kept in title
+- **Junk extras**: bitrate tags (`320kbps`), format tags (`FLAC`), URLs, `official video` — stripped
 - **Copy suffixes**: `— копия`, `- Copy`, `(2)` — stripped
+- **Garbage IDs**: trailing numeric/hex IDs from VK/SoundCloud — stripped
+- **Underscore filenames**: `artist_name_title.mp3` — underscores replaced, heuristic artist/title split
+- **Title Case**: per-word normalization, preserves abbreviations (DJ, NF, MC) and mixed case (McDonald)
 - **Confidence scoring**: high/medium/low — uncertain parses highlighted for review
+- **Garbage filenames**: pure garbage (`~~~~.mp3`, `12345678.mp3`) triggers manual entry dialog
 
 ### Two save modes
 
@@ -46,27 +53,77 @@ MP3, FLAC, OGG, M4A, WAV, WMA, OPUS
 | Frontend | Svelte |
 | Audio tags | [go-taglib](https://pkg.go.dev/go.senan.xyz/taglib) (TagLib via Wasm, no CGo) |
 
-## Build
+## Install
+
+### Windows
+
+Download `AudioInk-amd64-installer.exe` from [Releases](https://github.com/auazze/AudioInk/releases), run it. Adds right-click context menu for audio files.
+
+### macOS
+
+```bash
+# Build the app first (requires Mac)
+wails build
+# Run the installer
+bash build/darwin/install.sh
+```
+
+Installs `AudioInk.app` to `/Applications` and adds a Finder Quick Action (right-click menu).
+
+### Linux
+
+```bash
+# Build the binary first (requires Linux)
+wails build
+# Run the installer
+bash build/linux/install-context-menu.sh
+```
+
+Installs the binary and adds Nautilus scripts / Dolphin service menus / Freedesktop `.desktop` entry.
+
+All installers detect existing installations and offer reinstall/uninstall.
+
+## Build from Source
 
 Requirements: Go 1.23+, Node.js, [Wails CLI](https://wails.io/docs/gettingstarted/installation)
 
 ```bash
-# Install Wails CLI
+git clone https://github.com/auazze/AudioInk.git
+cd AudioInk
+
+# Install Wails CLI (once)
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-# Build
+# Build executable
 wails build
+
+# Build with Windows NSIS installer (requires NSIS in PATH)
+wails build --nsis
 
 # Dev mode with hot reload
 wails dev
+
+# Run tests
+go test ./...
 ```
 
-Binary output: `build/bin/AudioInk.exe`
+Binary output: `build/bin/AudioInk` (or `AudioInk.exe` on Windows)
 
 ## Usage
 
-1. Launch `AudioInk.exe`
+### GUI
+
+1. Launch AudioInk
 2. Drag & drop audio files onto the window, or use **Select files** / **Select folder**
-3. Review parsed results in the table — double-click to edit artist/title
-4. Click **Apply Tags** — choose **Save copies** or **Fix originals**
-5. For copies: find clean files in `AudioInk/` next to your originals
+3. If any files have garbage names, a manual entry dialog pops up — enter Artist + Title or skip
+4. Review parsed results in the table — double-click to edit artist/title
+5. Click **Apply Tags** — choose **Save copies** or **Fix originals**
+6. For copies: find clean files in `AudioInk/` next to your originals
+
+### CLI
+
+```bash
+AudioInk --fix file1.mp3 file2.flac ...
+```
+
+Runs headless: parses filenames, writes tags, renames files in place. For garbage filenames, a native OS dialog (PowerShell WinForms / zenity / osascript) prompts for Artist + Title. Also used by right-click context menu integrations.
