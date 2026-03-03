@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"os"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -13,6 +14,11 @@ import (
 var assets embed.FS
 
 func main() {
+	// CLI mode: audioink --fix file1.mp3 file2.flac ...
+	if len(os.Args) > 1 && os.Args[1] == "--fix" {
+		os.Exit(runFix(os.Args[2:]))
+	}
+
 	app := NewApp()
 
 	err := wails.Run(&options.App{
