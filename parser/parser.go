@@ -95,7 +95,10 @@ func Parse(path string) ParseResult {
 	name = stripTrailingIds(name)
 
 	// Step 1.4: Replace underscores with spaces (VK, SoundCloud, etc.)
+	nameBeforeUnderscore := name
 	name = replaceUnderscores(name)
+	// Track if filename was purely underscore-delimited (no spaces originally)
+	wasUnderscoreName := name != nameBeforeUnderscore && !strings.Contains(nameBeforeUnderscore, " ")
 
 	// Step 1.5: Strip any remaining space-separated trailing garbage
 	name = stripTrailingGarbageWords(name)
@@ -126,6 +129,23 @@ func Parse(path string) ParseResult {
 		// No separator found — clean up hyphenated names (police-siren → police siren)
 		result.Title = cleanHyphenatedName(strings.TrimSpace(name))
 		result.Confidence = Low
+
+		// Heuristic: if the filename was purely underscore-delimited (VK, SoundCloud, etc.)
+		// try splitting into artist / title by word count:
+		//   2 words → [1] artist + [1] title
+		//   3+ words → [2] artist + [rest] title
+		if wasUnderscoreName {
+			words := strings.Fields(result.Title)
+			if len(words) >= 2 {
+				splitAt := 1
+				if len(words) >= 3 {
+					splitAt = 2
+				}
+				result.Artist = strings.Join(words[:splitAt], " ")
+				result.Title = strings.Join(words[splitAt:], " ")
+				result.Confidence = Medium
+			}
+		}
 	}
 
 	// Step 7: Apply title case to all-lowercase or ALL-CAPS names

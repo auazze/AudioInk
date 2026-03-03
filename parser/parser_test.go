@@ -287,25 +287,36 @@ func TestTrackSuffixWithPrefix(t *testing.T) {
 
 func TestVkFilename(t *testing.T) {
 	r := Parse("aleksandr_novikov_roza_713893675_456239280_9dcc104f.mp3")
-	assertEq(t, r.Title, "Aleksandr Novikov Roza")
-	assertEq(t, r.Artist, "")
+	assertEq(t, r.Artist, "Aleksandr Novikov")
+	assertEq(t, r.Title, "Roza")
+	assertConfidence(t, r.Confidence, Medium)
 }
 
 func TestVkFilenameWithCopySuffix(t *testing.T) {
 	r := Parse("aleksandr_novikov_roza_713893675_456239280_9dcc104f — копия.mp3")
-	assertEq(t, r.Title, "Aleksandr Novikov Roza")
-	assertEq(t, r.Artist, "")
+	assertEq(t, r.Artist, "Aleksandr Novikov")
+	assertEq(t, r.Title, "Roza")
 }
 
 func TestUnderscoreSeparatedSimple(t *testing.T) {
+	// 4 words: split [2] artist + [2] title
 	r := Parse("artist_name_song_title.mp3")
-	assertEq(t, r.Title, "Artist Name Song Title")
-	assertEq(t, r.Artist, "")
+	assertEq(t, r.Artist, "Artist Name")
+	assertEq(t, r.Title, "Song Title")
 }
 
 func TestUnderscoreWithTrailingNumbers(t *testing.T) {
+	// 2 words after garbage strip: split [1] + [1]
 	r := Parse("cool_song_12345678.mp3")
-	assertEq(t, r.Title, "Cool Song")
+	assertEq(t, r.Artist, "Cool")
+	assertEq(t, r.Title, "Song")
+}
+
+func TestUnderscoreSingleWord(t *testing.T) {
+	// Only 1 word after cleanup — no split possible
+	r := Parse("metallica_12345678.mp3")
+	assertEq(t, r.Artist, "")
+	assertEq(t, r.Title, "Metallica")
 }
 
 func TestUnderscoreDashSeparatorConversion(t *testing.T) {
