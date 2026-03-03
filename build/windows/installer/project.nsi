@@ -66,6 +66,17 @@ ManifestDPIAware true
 
 !insertmacro MUI_LANGUAGE "English" # Set the Language of the installer
 
+# Macro to register context menu for one audio extension
+!macro RegisterContextMenu EXT
+    WriteRegStr HKCR "SystemFileAssociations\${EXT}\shell\AudioInk" "" "AudioInk: Fix name && tags"
+    WriteRegStr HKCR "SystemFileAssociations\${EXT}\shell\AudioInk" "Icon" "$INSTDIR\${PRODUCT_EXECUTABLE}"
+    WriteRegStr HKCR "SystemFileAssociations\${EXT}\shell\AudioInk\command" "" '"$INSTDIR\${PRODUCT_EXECUTABLE}" --fix "%1"'
+!macroend
+
+!macro UnregisterContextMenu EXT
+    DeleteRegKey HKCR "SystemFileAssociations\${EXT}\shell\AudioInk"
+!macroend
+
 ## The following two statements can be used to sign the installer and the uninstaller. The path to the binaries are provided in %1
 #!uninstfinalize 'signtool --file "%1"'
 #!finalize 'signtool --file "%1"'
@@ -94,6 +105,15 @@ Section
     !insertmacro wails.associateFiles
     !insertmacro wails.associateCustomProtocols
 
+    # Register context menu for audio files
+    !insertmacro RegisterContextMenu ".mp3"
+    !insertmacro RegisterContextMenu ".flac"
+    !insertmacro RegisterContextMenu ".ogg"
+    !insertmacro RegisterContextMenu ".m4a"
+    !insertmacro RegisterContextMenu ".wav"
+    !insertmacro RegisterContextMenu ".wma"
+    !insertmacro RegisterContextMenu ".opus"
+
     !insertmacro wails.writeUninstaller
 SectionEnd
 
@@ -109,6 +129,15 @@ Section "uninstall"
 
     !insertmacro wails.unassociateFiles
     !insertmacro wails.unassociateCustomProtocols
+
+    # Remove context menu for audio files
+    !insertmacro UnregisterContextMenu ".mp3"
+    !insertmacro UnregisterContextMenu ".flac"
+    !insertmacro UnregisterContextMenu ".ogg"
+    !insertmacro UnregisterContextMenu ".m4a"
+    !insertmacro UnregisterContextMenu ".wav"
+    !insertmacro UnregisterContextMenu ".wma"
+    !insertmacro UnregisterContextMenu ".opus"
 
     !insertmacro wails.deleteUninstaller
 SectionEnd
