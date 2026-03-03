@@ -43,11 +43,12 @@ var separators = []string{
 	" — ",
 	" – ",
 	"_-_",
+	"+-+",
 	" -",
 	"- ",
 }
 
-var trackPrefixRe = regexp.MustCompile(`^(\d{1,3})\s*[.\-_)\s]\s*`)
+var trackPrefixRe = regexp.MustCompile(`^#?(\d{1,3})\s*[.\-_)\s]\s*`)
 
 // Extras at end of string: (Remix), [Explicit], etc.
 var extrasParenRe = regexp.MustCompile(`\s*\(([^)]+)\)\s*$`)
@@ -72,6 +73,24 @@ var copyNumberRe = regexp.MustCompile(`\s*\(\d+\)\s*$`)
 // Trailing track suffix: _01, _02, _1 (underscore + 1-3 digits at end)
 var trackSuffixRe = regexp.MustCompile(`_(\d{1,3})$`)
 
+// Multiple dashes/equals → single separator
+var multiDashRe = regexp.MustCompile(`\s*[-=]{2,}\s*`)
+
+// Junk extras: quality tags, format tags, URLs, video tags
+var junkExtraRe = regexp.MustCompile(`(?i)^(?:` +
+	`\d{2,4}\s*k(?:bps|b/s)?` + // 320kbps, 128kb/s
+	`|\d{3}` + // bare bitrate: 128, 192, 256, 320
+	`|HQ|HD|LQ|CDQ|SQ` + // quality markers
+	`|FLAC|MP3|WAV|OGG|AAC|WMA|OPUS|M4A|ALAC|AIFF` + // format tags
+	`|www\..+` + // URLs
+	`|https?://.+` +
+	`|official\s+(?:video|audio|music\s+video)` + // video tags
+	`|music\s+video|lyric(?:s)?\s+video|audio\s+only` +
+	`|full\s+(?:version|album)` +
+	`|free\s+download` +
+	`|bonus\s+track` +
+	`)$`)
+
 func Parse(path string) ParseResult {
 	filename := filepath.Base(path)
 	ext := filepath.Ext(filename)
@@ -84,43 +103,48 @@ func Parse(path string) ParseResult {
 
 	name = strings.TrimSpace(name)
 
-	// Step 1: Strip copy suffixes (— копия, - Copy, (2), etc.)
+	// Step 0: Strip copy suffixes (— копия, - Copy, (2), etc.)
 	name = stripCopySuffix(name)
 
-	// Step 1.2: Extract track suffix (_01) before underscore replacement
+	// Step 1: Extract track suffix (_01) before underscore replacement
 	var trackFromSuffix int
 	name, trackFromSuffix = extractTrackSuffix(name)
 
-	// Step 1.3: Strip trailing garbage IDs (-21498, _713893675, _9dcc104f)
+	// Step 2: Strip trailing garbage IDs (-21498, _713893675, _9dcc104f)
 	name = stripTrailingIds(name)
 
-	// Step 1.4: Replace underscores with spaces (VK, SoundCloud, etc.)
+	// Step 3: Replace underscores with spaces (VK, SoundCloud, etc.)
 	nameBeforeUnderscore := name
 	name = replaceUnderscores(name)
-	// Track if filename was purely underscore-delimited (no spaces originally)
 	wasUnderscoreName := name != nameBeforeUnderscore && !strings.Contains(nameBeforeUnderscore, " ")
 
-	// Step 1.5: Strip any remaining space-separated trailing garbage
+	// Step 4: Normalize garbage characters, compound separators, curly braces
+	name = cleanupName(name)
+
+	// Step 5: Strip any remaining space-separated trailing garbage
 	name = stripTrailingGarbageWords(name)
 
-	// Step 2: Extract track number from beginning
+	// Step 6: Extract track number from beginning (#01, 01., etc.)
 	name, result.Track = extractTrack(name)
 	if result.Track == 0 {
 		result.Track = trackFromSuffix
 	}
 
-	// Step 3: Extract featured artists from parentheses (feat. X)
+	// Step 7: Extract featured artists from parentheses (feat. X)
 	name, result.FeaturedArtists = extractFeatInParens(name)
 
-	// Step 4: Extract extras from end (Remix), [Explicit], etc.
+	// Step 8: Extract extras from end (Remix), [Explicit], etc. — filters junk
 	name, result.Extras = extractExtras(name)
 
-	// Step 5: Split by separator into artist / title
+	// Step 9: Split by separator into artist / title
 	artist, title, found := splitBySeparator(name)
 
 	if found {
-		// Step 6: Extract any remaining inline featured artists
+		// Step 10: Extract any remaining inline featured artists
 		artist, title, result.FeaturedArtists = extractFeaturedInline(artist, title, result.FeaturedArtists)
+
+		// Step 11: Normalize "+" to "&" in artist (Artist1 + Artist2 → Artist1 & Artist2)
+		artist = normalizePlusInArtist(artist)
 
 		result.Artist = strings.TrimSpace(artist)
 		result.Title = strings.TrimSpace(title)
@@ -148,11 +172,88 @@ func Parse(path string) ParseResult {
 		}
 	}
 
-	// Step 7: Apply title case to all-lowercase or ALL-CAPS names
+	// Step 12: Apply title case to all-lowercase or ALL-CAPS names
 	result.Artist = titleCase(result.Artist)
 	result.Title = titleCase(result.Title)
 
+	// Final cleanup: trim any stray garbage from edges + orphan dashes
+	result.Artist = trimGarbageEdges(result.Artist)
+	result.Title = trimGarbageEdges(result.Title)
+	result.Artist = trimOrphanDashes(result.Artist)
+	result.Title = trimOrphanDashes(result.Title)
+
 	return result
+}
+
+// cleanupName normalizes compound separators, curly braces, and strips garbage characters.
+func cleanupName(name string) string {
+	// Curly braces → parentheses (for extras extraction)
+	name = strings.ReplaceAll(name, "{", "(")
+	name = strings.ReplaceAll(name, "}", ")")
+
+	// Multiple dashes or equals → single separator
+	name = multiDashRe.ReplaceAllString(name, " - ")
+
+	// Strip leading/trailing garbage characters
+	name = trimGarbageEdges(name)
+
+	// Collapse multiple spaces
+	name = collapseSpaces(name)
+
+	return strings.TrimSpace(name)
+}
+
+// trimGarbageEdges strips leading/trailing non-meaningful characters.
+func trimGarbageEdges(name string) string {
+	runes := []rune(name)
+
+	// Trim from start
+	start := 0
+	for start < len(runes) && isGarbageChar(runes[start]) {
+		start++
+	}
+
+	// Trim from end
+	end := len(runes)
+	for end > start && isGarbageChar(runes[end-1]) {
+		end--
+	}
+
+	return strings.TrimSpace(string(runes[start:end]))
+}
+
+func isGarbageChar(r rune) bool {
+	switch r {
+	case '~', '#', '@', '=', '%', '^', '*', '`', '|', '\\', ';':
+		// Note: '!' and '$' are NOT garbage — used in real names (SAD!, Ke$ha, A$AP Rocky)
+		return true
+	}
+	return false
+}
+
+// trimOrphanDashes removes leading/trailing dashes that aren't part of hyphenated names.
+// "- Artist" → "Artist", "Title -" → "Title", "Jay-Z" → "Jay-Z" (untouched)
+func trimOrphanDashes(s string) string {
+	s = strings.TrimSpace(s)
+	// Strip leading dashes (possibly followed by space)
+	for len(s) > 0 && s[0] == '-' {
+		s = strings.TrimSpace(s[1:])
+	}
+	// Strip trailing dashes — but NOT if attached to a word (like "Jay-Z")
+	for len(s) > 0 && s[len(s)-1] == '-' {
+		if len(s) >= 2 && s[len(s)-2] != ' ' {
+			break // dash is attached to a word, keep it
+		}
+		s = strings.TrimSpace(s[:len(s)-1])
+	}
+	return s
+}
+
+func collapseSpaces(name string) string {
+	for strings.Contains(name, "  ") {
+		name = strings.ReplaceAll(name, "  ", " ")
+	}
+	return name
 }
 
 func stripCopySuffix(name string) string {
@@ -184,10 +285,8 @@ func extractFeatInParens(name string) (string, []string) {
 		if m == nil {
 			break
 		}
-		// m[2]:m[3] is the captured group (artist names)
 		featStr := name[m[2]:m[3]]
 		featured = append(featured, splitArtists(featStr)...)
-		// Remove the whole (feat. ...) from the name
 		name = strings.TrimSpace(name[:m[0]] + name[m[1]:])
 	}
 	return name, featured
@@ -198,12 +297,18 @@ func extractExtras(name string) (string, string) {
 
 	for {
 		if m := extrasParenRe.FindStringSubmatch(name); m != nil {
-			extras = append([]string{m[1]}, extras...)
+			extra := strings.TrimSpace(m[1])
+			if !isJunkExtra(extra) {
+				extras = append([]string{extra}, extras...)
+			}
 			name = strings.TrimSpace(name[:extrasParenRe.FindStringIndex(name)[0]])
 			continue
 		}
 		if m := extrasBracketRe.FindStringSubmatch(name); m != nil {
-			extras = append([]string{m[1]}, extras...)
+			extra := strings.TrimSpace(m[1])
+			if !isJunkExtra(extra) {
+				extras = append([]string{extra}, extras...)
+			}
 			name = strings.TrimSpace(name[:extrasBracketRe.FindStringIndex(name)[0]])
 			continue
 		}
@@ -211,6 +316,11 @@ func extractExtras(name string) (string, string) {
 	}
 
 	return name, strings.Join(extras, ", ")
+}
+
+// isJunkExtra returns true if the extra is a quality tag, format tag, URL, etc.
+func isJunkExtra(s string) bool {
+	return junkExtraRe.MatchString(strings.TrimSpace(s))
 }
 
 func splitBySeparator(name string) (artist, title string, found bool) {
@@ -239,7 +349,6 @@ func splitBySeparator(name string) (artist, title string, found bool) {
 
 func findBareDash(name string) int {
 	runes := []rune(name)
-	// Find dashes that look like separators (letter-dash-letter)
 	for i, r := range runes {
 		if r != '-' {
 			continue
@@ -249,12 +358,9 @@ func findBareDash(name string) int {
 		}
 		before := runes[i-1]
 		after := runes[i+1]
-		// Accept if at least one side has a space (looks like separator, not hyphenated word)
 		if unicode.IsSpace(before) || unicode.IsSpace(after) {
 			return i
 		}
-		// Accept bare letter-dash-letter only if it's the sole dash
-		// and both sides have enough content (not "Guns-N-Roses" pattern)
 		dashCount := 0
 		for _, c := range runes {
 			if c == '-' {
@@ -271,7 +377,6 @@ func findBareDash(name string) int {
 func extractFeaturedInline(artist, title string, existing []string) (string, string, []string) {
 	featured := append([]string{}, existing...)
 
-	// Check artist field for inline featured
 	for _, re := range featPatterns {
 		if loc := re.FindStringIndex(artist); loc != nil {
 			featPart := strings.TrimSpace(artist[loc[1]:])
@@ -281,7 +386,6 @@ func extractFeaturedInline(artist, title string, existing []string) (string, str
 		}
 	}
 
-	// Check title field for inline featured
 	for _, re := range featPatterns {
 		if loc := re.FindStringIndex(title); loc != nil {
 			featPart := strings.TrimSpace(title[loc[1]:])
@@ -294,10 +398,15 @@ func extractFeaturedInline(artist, title string, existing []string) (string, str
 	return artist, title, featured
 }
 
+// normalizePlusInArtist converts " + " to " & " in artist names.
+func normalizePlusInArtist(artist string) string {
+	return strings.ReplaceAll(artist, " + ", " & ")
+}
+
 func splitArtists(s string) []string {
 	parts := []string{s}
 
-	delimiters := []string{" & ", ", ", " vs. ", " vs "}
+	delimiters := []string{" & ", " + ", ", ", " vs. ", " vs "}
 	for _, d := range delimiters {
 		var next []string
 		for _, p := range parts {
@@ -346,16 +455,12 @@ func extractTrackSuffix(name string) (string, int) {
 }
 
 // stripTrailingIds removes trailing garbage IDs from end of filename.
-// Strips segments attached by - or _ that look like numeric IDs (4+ digits)
-// or hex hashes (8+ hex chars with at least one digit).
-// Only strips when the delimiter is NOT preceded by a space (so " - Title" is safe).
 func stripTrailingIds(name string) string {
 	for {
 		idx := strings.LastIndexAny(name, "-_")
 		if idx <= 0 {
 			break
 		}
-		// Don't strip if preceded by space (that's a word separator, not ID delimiter)
 		if name[idx-1] == ' ' {
 			break
 		}
@@ -377,7 +482,6 @@ func isGarbageId(s string) bool {
 	if len(s) == 0 {
 		return false
 	}
-	// Pure digits, 4+ chars
 	if len(s) >= 4 {
 		allDigits := true
 		for _, c := range s {
@@ -390,7 +494,6 @@ func isGarbageId(s string) bool {
 			return true
 		}
 	}
-	// Hex-like ID: 8+ chars, only [0-9a-fA-F], must contain at least one digit
 	if len(s) >= 8 {
 		allHex := true
 		hasDigit := false
@@ -411,14 +514,10 @@ func isGarbageId(s string) bool {
 	return false
 }
 
-// replaceUnderscores converts underscores to spaces (common in VK, SoundCloud downloads).
+// replaceUnderscores converts underscores to spaces.
 func replaceUnderscores(name string) string {
 	name = strings.ReplaceAll(name, "_", " ")
-	// Collapse multiple spaces
-	for strings.Contains(name, "  ") {
-		name = strings.ReplaceAll(name, "  ", " ")
-	}
-	return strings.TrimSpace(name)
+	return strings.TrimSpace(collapseSpaces(name))
 }
 
 // stripTrailingGarbageWords removes space-separated trailing words that look like IDs.
@@ -434,8 +533,7 @@ func stripTrailingGarbageWords(name string) string {
 	return strings.Join(words, " ")
 }
 
-// cleanHyphenatedName replaces hyphens with spaces when all parts between
-// hyphens are lowercase (looks like word-separating hyphens, not names like Wu-Tang).
+// cleanHyphenatedName replaces hyphens with spaces when all parts are lowercase.
 func cleanHyphenatedName(name string) string {
 	if !strings.Contains(name, "-") {
 		return name
@@ -446,12 +544,10 @@ func cleanHyphenatedName(name string) string {
 		if p == "" {
 			continue
 		}
-		// If any part has uppercase letters, keep hyphens (could be a name)
 		if p != strings.ToLower(p) {
 			return name
 		}
 	}
-	// All parts lowercase — replace hyphens with spaces
 	cleaned := make([]string, 0, len(parts))
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
@@ -462,28 +558,36 @@ func cleanHyphenatedName(name string) string {
 	return strings.Join(cleaned, " ")
 }
 
+// Known abbreviations that should stay ALL CAPS.
+var abbreviations = map[string]bool{
+	"DJ": true, "MC": true, "NF": true, "ID": true, "TV": true, "OK": true,
+	"EP": true, "LP": true, "UK": true, "US": true, "EU": true, "AC": true,
+	"DC": true, "VR": true, "AI": true, "XL": true, "BTS": true, "EDM": true,
+}
+
 // titleCase capitalizes the first letter of each word.
-// Only applied when the string is ALL CAPS or all lowercase (and > 3 chars).
-// Short strings (1-3 chars) like "NF" or "DJ" are left unchanged.
+// Each word is checked independently: all-lower or ALL-CAPS words get title-cased,
+// known abbreviations (DJ, NF, MC, etc.) are kept ALL-CAPS,
+// mixed-case words (e.g. "McDonald") are left as-is.
 func titleCase(s string) string {
-	runes := []rune(s)
-	if len(runes) <= 3 {
-		return s
-	}
-
-	lower := strings.ToLower(s)
-	upper := strings.ToUpper(s)
-
-	// Only transform if uniformly cased
-	if s != lower && s != upper {
-		return s
-	}
-
-	words := strings.Fields(lower)
+	words := strings.Fields(s)
 	for i, w := range words {
 		r := []rune(w)
-		r[0] = unicode.ToUpper(r[0])
-		words[i] = string(r)
+		if len(r) <= 1 {
+			words[i] = strings.ToUpper(w)
+			continue
+		}
+		upper := strings.ToUpper(w)
+		if abbreviations[upper] {
+			words[i] = upper
+			continue
+		}
+		lower := strings.ToLower(w)
+		if w == lower || w == upper {
+			r = []rune(lower)
+			r[0] = unicode.ToUpper(r[0])
+			words[i] = string(r)
+		}
 	}
 	return strings.Join(words, " ")
 }
