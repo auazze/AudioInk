@@ -7,6 +7,11 @@ import (
 	"testing"
 )
 
+func TestMain(m *testing.M) {
+	notificationsEnabled = false
+	os.Exit(m.Run())
+}
+
 func TestRunFix_NoArgs(t *testing.T) {
 	code := runFix(nil)
 	if code != 1 {

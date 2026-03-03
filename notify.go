@@ -7,8 +7,14 @@ import (
 	"strings"
 )
 
+// notificationsEnabled can be set to false during tests to suppress real OS notifications.
+var notificationsEnabled = true
+
 // showNotification displays a native OS notification with the fix results.
 func showNotification(success, errors, total int) {
+	if !notificationsEnabled {
+		return
+	}
 	var message string
 
 	switch {
