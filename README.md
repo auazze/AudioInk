@@ -53,37 +53,7 @@ MP3, FLAC, OGG, M4A, WAV, WMA, OPUS
 | Frontend | Svelte |
 | Audio tags | [go-taglib](https://pkg.go.dev/go.senan.xyz/taglib) (TagLib via Wasm, no CGo) |
 
-## Install
-
-### Windows
-
-Download `AudioInk-amd64-installer.exe` from [Releases](https://github.com/auazze/AudioInk/releases), run it. Adds right-click context menu for audio files.
-
-### macOS
-
-```bash
-# Build the app first (requires Mac)
-wails build
-# Run the installer
-bash build/darwin/install.sh
-```
-
-Installs `AudioInk.app` to `/Applications` and adds a Finder Quick Action (right-click menu).
-
-### Linux
-
-```bash
-# Build the binary first (requires Linux)
-wails build
-# Run the installer
-bash build/linux/install-context-menu.sh
-```
-
-Installs the binary and adds Nautilus scripts / Dolphin service menus / Freedesktop `.desktop` entry.
-
-All installers detect existing installations and offer reinstall/uninstall.
-
-## Build from Source
+## Build & Install
 
 Requirements: Go 1.23+, Node.js, [Wails CLI](https://wails.io/docs/gettingstarted/installation)
 
@@ -94,11 +64,8 @@ cd AudioInk
 # Install Wails CLI (once)
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-# Build executable
+# Build executable only
 wails build
-
-# Build with Windows NSIS installer (requires NSIS in PATH)
-wails build --nsis
 
 # Dev mode with hot reload
 wails dev
@@ -108,6 +75,38 @@ go test ./...
 ```
 
 Binary output: `build/bin/AudioInk` (or `AudioInk.exe` on Windows)
+
+### Windows installer
+
+Requires [NSIS](https://nsis.sourceforge.io/Download) in PATH.
+
+```bash
+wails build --nsis
+```
+
+Creates `build/bin/AudioInk-amd64-installer.exe` — installs the app, adds right-click context menu for audio files ("AudioInk Fix"), handles reinstall/uninstall via registry.
+
+### macOS installer
+
+Build on a Mac, then run the install script:
+
+```bash
+wails build
+bash build/darwin/install.sh
+```
+
+Copies `AudioInk.app` to `/Applications` and installs a Finder Quick Action (right-click menu). Detects existing installation, offers reinstall/uninstall.
+
+### Linux installer
+
+Build on Linux, then run the install script:
+
+```bash
+wails build
+bash build/linux/install-context-menu.sh
+```
+
+Installs the binary and adds context menus for Nautilus (GNOME), Dolphin (KDE), and Freedesktop `.desktop` entry. Detects existing installation, offers reinstall/uninstall.
 
 ## Usage
 
