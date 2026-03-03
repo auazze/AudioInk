@@ -283,6 +283,38 @@ func TestTrackSuffixWithPrefix(t *testing.T) {
 	}
 }
 
+// === VK / underscore-separated filenames ===
+
+func TestVkFilename(t *testing.T) {
+	r := Parse("aleksandr_novikov_roza_713893675_456239280_9dcc104f.mp3")
+	assertEq(t, r.Title, "Aleksandr Novikov Roza")
+	assertEq(t, r.Artist, "")
+}
+
+func TestVkFilenameWithCopySuffix(t *testing.T) {
+	r := Parse("aleksandr_novikov_roza_713893675_456239280_9dcc104f — копия.mp3")
+	assertEq(t, r.Title, "Aleksandr Novikov Roza")
+	assertEq(t, r.Artist, "")
+}
+
+func TestUnderscoreSeparatedSimple(t *testing.T) {
+	r := Parse("artist_name_song_title.mp3")
+	assertEq(t, r.Title, "Artist Name Song Title")
+	assertEq(t, r.Artist, "")
+}
+
+func TestUnderscoreWithTrailingNumbers(t *testing.T) {
+	r := Parse("cool_song_12345678.mp3")
+	assertEq(t, r.Title, "Cool Song")
+}
+
+func TestUnderscoreDashSeparatorConversion(t *testing.T) {
+	// _-_ should become " - " after underscore replacement
+	r := Parse("Some_Artist_-_Some_Title.mp3")
+	assertEq(t, r.Artist, "Some Artist")
+	assertEq(t, r.Title, "Some Title")
+}
+
 func assertEq(t *testing.T, got, want string) {
 	t.Helper()
 	if got != want {

@@ -72,9 +72,6 @@ var copyNumberRe = regexp.MustCompile(`\s*\(\d+\)\s*$`)
 // Trailing track suffix: _01, _02, _1 (underscore + 1-3 digits at end)
 var trackSuffixRe = regexp.MustCompile(`_(\d{1,3})$`)
 
-// Trailing ID/garbage numbers: -21498, _83621 (separator + 4+ digits at end)
-var trailingIdRe = regexp.MustCompile(`[-_]\d{4,}$`)
-
 func Parse(path string) ParseResult {
 	filename := filepath.Base(path)
 	ext := filepath.Ext(filename)
@@ -90,10 +87,18 @@ func Parse(path string) ParseResult {
 	// Step 1: Strip copy suffixes (— копия, - Copy, (2), etc.)
 	name = stripCopySuffix(name)
 
-	// Step 1.5: Strip trailing garbage IDs (-21498) and track suffixes (_01)
-	name = stripTrailingId(name)
+	// Step 1.2: Extract track suffix (_01) before underscore replacement
 	var trackFromSuffix int
 	name, trackFromSuffix = extractTrackSuffix(name)
+
+	// Step 1.3: Strip trailing garbage IDs (-21498, _713893675, _9dcc104f)
+	name = stripTrailingIds(name)
+
+	// Step 1.4: Replace underscores with spaces (VK, SoundCloud, etc.)
+	name = replaceUnderscores(name)
+
+	// Step 1.5: Strip any remaining space-separated trailing garbage
+	name = stripTrailingGarbageWords(name)
 
 	// Step 2: Extract track number from beginning
 	name, result.Track = extractTrack(name)
@@ -320,9 +325,93 @@ func extractTrackSuffix(name string) (string, int) {
 	return strings.TrimSpace(trackSuffixRe.ReplaceAllString(name, "")), num
 }
 
-// stripTrailingId removes garbage ID numbers from end of filename (-21498, _83621).
-func stripTrailingId(name string) string {
-	return strings.TrimSpace(trailingIdRe.ReplaceAllString(name, ""))
+// stripTrailingIds removes trailing garbage IDs from end of filename.
+// Strips segments attached by - or _ that look like numeric IDs (4+ digits)
+// or hex hashes (8+ hex chars with at least one digit).
+// Only strips when the delimiter is NOT preceded by a space (so " - Title" is safe).
+func stripTrailingIds(name string) string {
+	for {
+		idx := strings.LastIndexAny(name, "-_")
+		if idx <= 0 {
+			break
+		}
+		// Don't strip if preceded by space (that's a word separator, not ID delimiter)
+		if name[idx-1] == ' ' {
+			break
+		}
+		segment := strings.TrimSpace(name[idx+1:])
+		if segment == "" {
+			break
+		}
+		if isGarbageId(segment) {
+			name = strings.TrimSpace(name[:idx])
+		} else {
+			break
+		}
+	}
+	return name
+}
+
+// isGarbageId returns true if the string looks like a numeric/hex ID.
+func isGarbageId(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	// Pure digits, 4+ chars
+	if len(s) >= 4 {
+		allDigits := true
+		for _, c := range s {
+			if c < '0' || c > '9' {
+				allDigits = false
+				break
+			}
+		}
+		if allDigits {
+			return true
+		}
+	}
+	// Hex-like ID: 8+ chars, only [0-9a-fA-F], must contain at least one digit
+	if len(s) >= 8 {
+		allHex := true
+		hasDigit := false
+		for _, c := range s {
+			if c >= '0' && c <= '9' {
+				hasDigit = true
+			} else if (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') {
+				// hex letter
+			} else {
+				allHex = false
+				break
+			}
+		}
+		if allHex && hasDigit {
+			return true
+		}
+	}
+	return false
+}
+
+// replaceUnderscores converts underscores to spaces (common in VK, SoundCloud downloads).
+func replaceUnderscores(name string) string {
+	name = strings.ReplaceAll(name, "_", " ")
+	// Collapse multiple spaces
+	for strings.Contains(name, "  ") {
+		name = strings.ReplaceAll(name, "  ", " ")
+	}
+	return strings.TrimSpace(name)
+}
+
+// stripTrailingGarbageWords removes space-separated trailing words that look like IDs.
+func stripTrailingGarbageWords(name string) string {
+	words := strings.Fields(name)
+	for len(words) > 1 {
+		if isGarbageId(words[len(words)-1]) {
+			words = words[:len(words)-1]
+		} else {
+			break
+		}
+	}
+	return strings.Join(words, " ")
 }
 
 // cleanHyphenatedName replaces hyphens with spaces when all parts between
