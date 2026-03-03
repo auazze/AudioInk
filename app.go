@@ -308,7 +308,21 @@ func (a *App) processApply(requests []ApplyRequest, outputDir string, overwrite 
 
 			// Rename the original
 			destPath := filepath.Join(filepath.Dir(req.FilePath), newFilename)
-			if destPath != req.FilePath {
+			if destPath == req.FilePath {
+				logger.Printf("  OK (overwrite, same name): %s", newFilename)
+			} else if pathsEqual(destPath, req.FilePath) {
+				// Only case changed — rename directly without uniquePath
+				if err := os.Rename(req.FilePath, destPath); err != nil {
+					logger.Printf("  RENAME ERROR: %v", err)
+					results = append(results, ApplyResult{
+						FilePath:    req.FilePath,
+						NewFilename: filepath.Base(req.FilePath),
+						Error:       fmt.Sprintf("rename failed (tags ok): %v", err),
+					})
+					continue
+				}
+				logger.Printf("  OK (overwrite, case fix): %s", filepath.Base(destPath))
+			} else {
 				destPath = uniquePath(destPath)
 				if err := os.Rename(req.FilePath, destPath); err != nil {
 					logger.Printf("  RENAME ERROR: %v", err)
@@ -320,8 +334,6 @@ func (a *App) processApply(requests []ApplyRequest, outputDir string, overwrite 
 					continue
 				}
 				logger.Printf("  OK (overwrite): %s", filepath.Base(destPath))
-			} else {
-				logger.Printf("  OK (overwrite, same name): %s", newFilename)
 			}
 
 			results = append(results, ApplyResult{
@@ -412,6 +424,15 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return out.Close()
+}
+
+// pathsEqual compares two paths case-insensitively on Windows,
+// case-sensitively on other platforms.
+func pathsEqual(a, b string) bool {
+	if goruntime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
 }
 
 func uniquePath(path string) string {

@@ -105,14 +105,20 @@ func fixOneFile(filePath string) error {
 	}
 
 	newPath := filepath.Join(filepath.Dir(filePath), newFilename)
-	if newPath != filePath {
+	if newPath == filePath {
+		logger.Println("    name already correct, tags updated")
+	} else if pathsEqual(newPath, filePath) {
+		// Only case changed (e.g. "novikov" → "Novikov") — rename directly
+		logger.Printf("    rename (case fix) → %s", filepath.Base(newPath))
+		if err := os.Rename(filePath, newPath); err != nil {
+			return fmt.Errorf("rename: %w", err)
+		}
+	} else {
 		newPath = uniquePath(newPath)
 		logger.Printf("    rename → %s", filepath.Base(newPath))
 		if err := os.Rename(filePath, newPath); err != nil {
 			return fmt.Errorf("rename: %w", err)
 		}
-	} else {
-		logger.Println("    name already correct, tags updated")
 	}
 
 	return nil
