@@ -16,12 +16,17 @@ Desktop app that parses audio filenames and writes correct metadata tags. Built 
 ## Project Structure
 
 ```
-main.go          — Wails app entry point, window config, drag & drop
+main.go          — Entry point: --fix flag → CLI mode, otherwise GUI
 app.go           — Backend API exposed to frontend (scan, parse, apply)
+fix.go           — Headless CLI fix logic (parse, tag, rename)
+notify.go        — Cross-platform system notifications (Windows/macOS/Linux)
 parser/          — Filename parser: separators, track numbers, extras, featured artists, confidence
 tagger/          — Read/write audio metadata via go-taglib
 scanner/         — Recursive directory scanner, extension filter
 frontend/src/    — Svelte UI: DropZone, FileTable, EditRow
+build/windows/   — NSIS installer + context menu registry entries
+build/darwin/    — macOS Quick Action for Finder context menu
+build/linux/     — Freedesktop .desktop + Nautilus/Dolphin scripts
 ```
 
 ## Key Patterns
@@ -36,7 +41,7 @@ frontend/src/    — Svelte UI: DropZone, FileTable, EditRow
 ## Commands
 
 ```bash
-# Dev mode
+# Dev mode (GUI)
 wails dev
 
 # Build
@@ -47,7 +52,22 @@ go test ./...
 
 # Run specific package tests
 go test ./parser/ -v
+
+# CLI mode: fix files without GUI
+AudioInk --fix file1.mp3 file2.mp3
 ```
+
+## CLI Mode (--fix)
+
+`AudioInk --fix file1.mp3 file2.flac ...` runs headless: parses filenames, writes tags, renames files in place, shows a system toast notification with the result. Used by OS context menu integrations.
+
+Without arguments, AudioInk opens the GUI as usual.
+
+### Context Menu Files
+
+- **Windows**: `build/windows/installer/project.nsi` — registry entries via NSIS
+- **macOS**: `build/darwin/AudioInk Fix.workflow/` — Automator Quick Action
+- **Linux**: `build/linux/` — Freedesktop .desktop + Nautilus/Dolphin scripts
 
 ## File Naming Convention
 
