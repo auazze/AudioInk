@@ -18,6 +18,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+const outputFolderName = "AudioInk"
+
 var logger *log.Logger
 
 func initLogger() {
@@ -25,7 +27,6 @@ func initLogger() {
 	logPath := filepath.Join(filepath.Dir(exe), "audioink.log")
 	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
-		// fallback: log next to working dir
 		f, _ = os.OpenFile("audioink.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	}
 	logger = log.New(f, "", log.Ltime)
@@ -77,14 +78,12 @@ func buildNewFilename(artist, title, extras, ext string) string {
 }
 
 func sanitizeFilename(name string) string {
-	// Remove characters invalid in Windows filenames
 	replacer := strings.NewReplacer(
 		"<", "", ">", "", ":", "", "\"", "",
 		"/", "", "\\", "", "|", "", "?", "", "*", "",
 	)
 	name = replacer.Replace(name)
 	name = strings.TrimSpace(name)
-	// Collapse multiple spaces
 	for strings.Contains(name, "  ") {
 		name = strings.ReplaceAll(name, "  ", " ")
 	}
@@ -99,7 +98,6 @@ func toFileResult(pr parser.ParseResult) FileResult {
 		logger.Printf("  existing tags: artist=%q title=%q", existing.Artist, existing.Title)
 	}
 
-	// Merge all artists with &
 	allArtists := []string{}
 	if pr.Artist != "" {
 		allArtists = append(allArtists, pr.Artist)
@@ -108,8 +106,6 @@ func toFileResult(pr parser.ParseResult) FileResult {
 	artist := strings.Join(allArtists, " & ")
 
 	title := pr.Title
-
-	// Extras like (Remix), (Live), (Acoustic) go at the end of filename
 	extras := pr.Extras
 
 	ext := filepath.Ext(pr.Filename)
@@ -224,18 +220,17 @@ type ApplyResult struct {
 	Error       string `json:"error,omitempty"`
 }
 
-func (a *App) ApplyTags(requests []ApplyRequest) []ApplyResult {
-	logger.Printf("=== ApplyTags called with %d files ===", len(requests))
+// ApplyTagsCopy copies files to AudioInk/ subfolder with new names + tags
+func (a *App) ApplyTagsCopy(requests []ApplyRequest) []ApplyResult {
+	logger.Printf("=== ApplyTagsCopy called with %d files ===", len(requests))
 
 	if len(requests) == 0 {
 		logger.Println("no files to process")
 		return nil
 	}
 
-	// Determine output directory: _AudioInk_output/ next to source files
 	sourceDir := filepath.Dir(requests[0].FilePath)
-	outputDir := filepath.Join(sourceDir, "_AudioInk_output")
-
+	outputDir := filepath.Join(sourceDir, outputFolderName)
 	logger.Printf("output directory: %s", outputDir)
 
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
@@ -248,35 +243,35 @@ func (a *App) ApplyTags(requests []ApplyRequest) []ApplyResult {
 		return results
 	}
 
+	return a.processApply(requests, outputDir, false)
+}
+
+// ApplyTagsOverwrite renames + writes tags on originals in place
+func (a *App) ApplyTagsOverwrite(requests []ApplyRequest) []ApplyResult {
+	logger.Printf("=== ApplyTagsOverwrite called with %d files ===", len(requests))
+
+	if len(requests) == 0 {
+		logger.Println("no files to process")
+		return nil
+	}
+
+	return a.processApply(requests, "", true)
+}
+
+func (a *App) processApply(requests []ApplyRequest, outputDir string, overwrite bool) []ApplyResult {
 	results := make([]ApplyResult, 0, len(requests))
 
 	for _, req := range requests {
 		logger.Printf("processing: %s", filepath.Base(req.FilePath))
-		logger.Printf("  artist=%q title=%q extras=%q track=%d", req.Artist, req.Title, req.Extras, req.Track)
+		logger.Printf("  artist=%q title=%q extras=%q track=%d overwrite=%v",
+			req.Artist, req.Title, req.Extras, req.Track, overwrite)
 
 		ext := filepath.Ext(req.FilePath)
 		newFilename := buildNewFilename(req.Artist, req.Title, req.Extras, ext)
 		if newFilename == "" {
 			newFilename = filepath.Base(req.FilePath)
 		}
-		destPath := filepath.Join(outputDir, newFilename)
 
-		// Avoid overwriting if file with same name exists
-		destPath = uniquePath(destPath)
-
-		logger.Printf("  copying to: %s", destPath)
-
-		// Step 1: Copy file to output
-		if err := copyFile(req.FilePath, destPath); err != nil {
-			logger.Printf("  COPY ERROR: %v", err)
-			results = append(results, ApplyResult{
-				FilePath: req.FilePath, Error: fmt.Sprintf("copy failed: %v", err),
-			})
-			continue
-		}
-
-		// Step 2: Write tags on the copy
-		// Title tag includes extras: "Song Title (Remix)"
 		tagTitle := req.Title
 		if req.Extras != "" {
 			tagTitle = tagTitle + " (" + req.Extras + ")"
@@ -286,24 +281,75 @@ func (a *App) ApplyTags(requests []ApplyRequest) []ApplyResult {
 			Title:  tagTitle,
 			Track:  req.Track,
 		}
-		if err := tagger.Write(destPath, tags); err != nil {
-			logger.Printf("  TAG WRITE ERROR: %v", err)
-			results = append(results, ApplyResult{
-				FilePath: req.FilePath,
-				NewPath:  destPath,
-				NewFilename: filepath.Base(destPath),
-				Error:    fmt.Sprintf("tags failed (file copied ok): %v", err),
-			})
-			continue
-		}
 
-		logger.Printf("  OK: %s", filepath.Base(destPath))
-		results = append(results, ApplyResult{
-			FilePath:    req.FilePath,
-			NewPath:     destPath,
-			NewFilename: filepath.Base(destPath),
-			Success:     true,
-		})
+		if overwrite {
+			// Write tags on the original
+			if err := tagger.Write(req.FilePath, tags); err != nil {
+				logger.Printf("  TAG WRITE ERROR: %v", err)
+				results = append(results, ApplyResult{
+					FilePath: req.FilePath, Error: fmt.Sprintf("tags failed: %v", err),
+				})
+				continue
+			}
+
+			// Rename the original
+			destPath := filepath.Join(filepath.Dir(req.FilePath), newFilename)
+			if destPath != req.FilePath {
+				destPath = uniquePath(destPath)
+				if err := os.Rename(req.FilePath, destPath); err != nil {
+					logger.Printf("  RENAME ERROR: %v", err)
+					results = append(results, ApplyResult{
+						FilePath:    req.FilePath,
+						NewFilename: filepath.Base(req.FilePath),
+						Error:       fmt.Sprintf("rename failed (tags ok): %v", err),
+					})
+					continue
+				}
+				logger.Printf("  OK (overwrite): %s", filepath.Base(destPath))
+			} else {
+				logger.Printf("  OK (overwrite, same name): %s", newFilename)
+			}
+
+			results = append(results, ApplyResult{
+				FilePath:    req.FilePath,
+				NewPath:     destPath,
+				NewFilename: filepath.Base(destPath),
+				Success:     true,
+			})
+		} else {
+			// Copy mode
+			destPath := filepath.Join(outputDir, newFilename)
+			destPath = uniquePath(destPath)
+
+			logger.Printf("  copying to: %s", destPath)
+
+			if err := copyFile(req.FilePath, destPath); err != nil {
+				logger.Printf("  COPY ERROR: %v", err)
+				results = append(results, ApplyResult{
+					FilePath: req.FilePath, Error: fmt.Sprintf("copy failed: %v", err),
+				})
+				continue
+			}
+
+			if err := tagger.Write(destPath, tags); err != nil {
+				logger.Printf("  TAG WRITE ERROR: %v", err)
+				results = append(results, ApplyResult{
+					FilePath:    req.FilePath,
+					NewPath:     destPath,
+					NewFilename: filepath.Base(destPath),
+					Error:       fmt.Sprintf("tags failed (file copied ok): %v", err),
+				})
+				continue
+			}
+
+			logger.Printf("  OK (copy): %s", filepath.Base(destPath))
+			results = append(results, ApplyResult{
+				FilePath:    req.FilePath,
+				NewPath:     destPath,
+				NewFilename: filepath.Base(destPath),
+				Success:     true,
+			})
+		}
 	}
 
 	successCount := 0
@@ -312,14 +358,13 @@ func (a *App) ApplyTags(requests []ApplyRequest) []ApplyResult {
 			successCount++
 		}
 	}
-	logger.Printf("=== Done: %d/%d successful, output in %s ===", successCount, len(results), outputDir)
-
+	logger.Printf("=== Done: %d/%d successful ===", successCount, len(results))
 	return results
 }
 
 func (a *App) OpenOutputFolder(sourcePath string) {
 	sourceDir := filepath.Dir(sourcePath)
-	outputDir := filepath.Join(sourceDir, "_AudioInk_output")
+	outputDir := filepath.Join(sourceDir, outputFolderName)
 	logger.Printf("opening output folder: %s", outputDir)
 
 	var cmd *exec.Cmd

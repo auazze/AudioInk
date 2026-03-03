@@ -54,7 +54,7 @@
 </script>
 
 <tr class="file-row" class:row-done={file.status === 'done'} class:row-error={file.status === 'error'}>
-    <td class="cell-filename" title={file.filename}>
+    <td class="cell-filename" title={showStatus && file.outputFilename ? file.outputFilename : file.filename}>
         {#if showStatus && file.outputFilename}
             <span class="new-name">{file.outputFilename}</span>
         {:else}

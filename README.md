@@ -1,4 +1,8 @@
-# AudioInk
+<p align="center">
+  <img src="logo.svg" alt="AudioInk" width="200">
+</p>
+
+<h1 align="center">AudioInk</h1>
 
 Lightweight desktop app that fixes audio file metadata. Parses filenames like `Artist - Song (feat. Someone).mp3` and writes correct ID3/Vorbis tags — artist, title, track number — then saves a clean copy with a proper filename.
 
@@ -24,9 +28,10 @@ Audio files often have filenames like `01. Tomoya Ohtani-Break Through It All (f
 - **Copy suffixes**: `— копия`, `- Copy`, `(2)` — stripped
 - **Confidence scoring**: high/medium/low — uncertain parses highlighted for review
 
-### Safe by default
+### Two save modes
 
-Originals are **never modified**. Output goes to `_AudioInk_output/` folder next to your files.
+- **Save copies** (default) — originals stay untouched, clean copies go to `AudioInk/` folder next to your files
+- **Fix originals** — renames and tags original files in place
 
 ## Supported Formats
 
@@ -63,5 +68,5 @@ Binary output: `build/bin/AudioInk.exe`
 1. Launch `AudioInk.exe`
 2. Drag & drop audio files onto the window, or use **Select files** / **Select folder**
 3. Review parsed results in the table — double-click to edit artist/title
-4. Click **Apply Tags**
-5. Find clean files in `_AudioInk_output/` next to your originals
+4. Click **Apply Tags** — choose **Save copies** or **Fix originals**
+5. For copies: find clean files in `AudioInk/` next to your originals

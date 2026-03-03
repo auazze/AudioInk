@@ -1,7 +1,7 @@
 <script>
     import DropZone from './components/DropZone.svelte';
     import FileTable from './components/FileTable.svelte';
-    import { SelectFiles, SelectDirectory, ScanFiles, ApplyTags, OpenOutputFolder } from '../wailsjs/go/main/App.js';
+    import { SelectFiles, SelectDirectory, ScanFiles, ApplyTagsCopy, ApplyTagsOverwrite, OpenOutputFolder } from '../wailsjs/go/main/App.js';
     import { OnFileDrop } from '../wailsjs/runtime/runtime.js';
     import { onMount } from 'svelte';
 
@@ -11,6 +11,8 @@
     let errorCount = 0;
     let applyResults = [];
     let done = false;
+    let showChoice = false;
+    let applyMode = '';
 
     $: readyCount = files.filter(f => f.confidence === 'high' || f.confidence === 'medium').length;
     $: reviewCount = files.filter(f => f.confidence === 'low').length;
@@ -62,6 +64,8 @@
         errorCount = 0;
         applyResults = [];
         done = false;
+        showChoice = false;
+        applyMode = '';
     }
 
     function handleUpdate(e) {
@@ -85,7 +89,13 @@
         files = files;
     }
 
-    async function applyAll() {
+    function promptApply() {
+        showChoice = true;
+    }
+
+    async function applyWithMode(mode) {
+        showChoice = false;
+        applyMode = mode;
         applying = true;
         appliedCount = 0;
         errorCount = 0;
@@ -100,7 +110,8 @@
         }));
 
         try {
-            const results = await ApplyTags(requests);
+            const applyFn = mode === 'overwrite' ? ApplyTagsOverwrite : ApplyTagsCopy;
+            const results = await applyFn(requests);
             applyResults = results || [];
             for (const r of applyResults) {
                 if (r.success) appliedCount++;
@@ -150,6 +161,24 @@
     {:else}
         <FileTable {files} showStatus={done} on:update={handleUpdate} />
 
+        {#if showChoice}
+            <div class="choice-overlay" on:click|self={() => showChoice = false}>
+                <div class="choice-dialog">
+                    <p class="choice-title">How should files be saved?</p>
+                    <button class="choice-btn choice-copy" on:click={() => applyWithMode('copy')}>
+                        <span class="choice-icon">&#128230;</span>
+                        <span class="choice-label">Save copies</span>
+                        <span class="choice-desc">Originals stay untouched, copies go to AudioInk folder</span>
+                    </button>
+                    <button class="choice-btn choice-overwrite" on:click={() => applyWithMode('overwrite')}>
+                        <span class="choice-icon">&#9998;</span>
+                        <span class="choice-label">Fix originals</span>
+                        <span class="choice-desc">Rename and tag original files in place</span>
+                    </button>
+                </div>
+            </div>
+        {/if}
+
         <footer class="statusbar">
             <div class="stats">
                 <span>Found: <strong>{files.length}</strong></span>
@@ -168,7 +197,7 @@
                 {/if}
             </div>
             <div class="actions">
-                {#if done}
+                {#if done && applyMode === 'copy'}
                     <button class="btn-open" on:click={openOutput}>
                         Open output folder
                     </button>
@@ -179,7 +208,7 @@
                 {#if !done}
                     <button
                         class="btn-apply"
-                        on:click={applyAll}
+                        on:click={promptApply}
                         disabled={applying || files.length === 0}
                     >
                         {#if applying}
@@ -297,5 +326,69 @@
     .btn-apply:disabled {
         opacity: 0.5;
         cursor: not-allowed;
+    }
+
+    .choice-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+    }
+
+    .choice-dialog {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 24px;
+        width: 340px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .choice-title {
+        margin: 0 0 4px;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text);
+        text-align: center;
+    }
+
+    .choice-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        padding: 14px 16px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: transparent;
+        cursor: pointer;
+        transition: all 0.15s;
+        text-align: left;
+    }
+
+    .choice-btn:hover {
+        border-color: var(--accent);
+        background: rgba(99, 102, 241, 0.05);
+    }
+
+    .choice-icon {
+        font-size: 18px;
+        margin-bottom: 2px;
+    }
+
+    .choice-label {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text);
+    }
+
+    .choice-desc {
+        font-size: 12px;
+        color: var(--text-dim);
     }
 </style>

@@ -17,7 +17,7 @@ func main() {
 
 	err := wails.Run(&options.App{
 		Title:            "AudioInk",
-		Width:            900,
+		Width:            1100,
 		Height:           650,
 		MinWidth:         600,
 		MinHeight:        400,

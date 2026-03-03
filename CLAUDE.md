@@ -26,7 +26,7 @@ frontend/src/    — Svelte UI: DropZone, FileTable, EditRow
 
 ## Key Patterns
 
-- **Safe output**: Files are copied to `_AudioInk_output/` folder, originals untouched
+- **Two save modes**: Copy to `AudioInk/` subfolder (originals untouched) or fix originals in place
 - **Featured artists**: `feat.`/`ft.` merged with main artist via `&`
 - **Extras**: `(Remix)`, `(Live)` etc. appended to end of filename and title tag
 - **Copy suffixes**: `— копия`, `- Copy`, `(2)` stripped automatically

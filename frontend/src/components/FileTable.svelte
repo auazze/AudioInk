@@ -34,7 +34,7 @@
     .table-wrapper {
         flex: 1;
         overflow-y: auto;
-        margin: 0 16px;
+        margin: 0 16px 12px;
         border: 1px solid var(--border);
         border-radius: 8px;
         background: var(--surface);
