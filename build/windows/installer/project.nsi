@@ -88,6 +88,33 @@ ShowInstDetails show # This will always show the installation details.
 
 Function .onInit
    !insertmacro wails.checkArchitecture
+
+   # Check if AudioInk is already installed
+   ReadRegStr $0 HKLM "${UNINST_KEY}" "UninstallString"
+   StrCmp $0 "" done_check
+
+   MessageBox MB_YESNOCANCEL|MB_ICONQUESTION \
+       "AudioInk is already installed.$\n$\nYes = Reinstall (remove old, install new)$\nNo = Uninstall only$\nCancel = Abort" \
+       IDYES do_reinstall IDNO do_uninstall
+
+   # Cancel
+   Abort
+
+   do_uninstall:
+       # Run uninstaller silently and wait
+       ExecWait $0
+       Abort
+
+   do_reinstall:
+       # Run uninstaller silently, then continue with install
+       # Strip quotes from uninstall string
+       StrCpy $2 $0 "" 1   # remove first quote
+       StrLen $3 $2
+       IntOp $3 $3 - 1
+       StrCpy $2 $2 $3     # remove last quote
+       ExecWait '"$2" /S'
+
+   done_check:
 FunctionEnd
 
 Section
@@ -115,6 +142,10 @@ Section
     !insertmacro RegisterContextMenu ".opus"
 
     !insertmacro wails.writeUninstaller
+
+    # Store install location so reinstall/uninstall detection works from any path
+    SetRegView 64
+    WriteRegStr HKLM "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
 SectionEnd
 
 Section "uninstall"

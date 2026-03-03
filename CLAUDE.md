@@ -19,14 +19,14 @@ Desktop app that parses audio filenames and writes correct metadata tags. Built 
 main.go          — Entry point: --fix flag → CLI mode, otherwise GUI
 app.go           — Backend API exposed to frontend (scan, parse, apply)
 fix.go           — Headless CLI fix logic (parse, tag, rename)
-notify.go        — Cross-platform system notifications (Windows/macOS/Linux)
+notify.go        — Notification stub (currently no-op)
 parser/          — Filename parser: separators, track numbers, extras, featured artists, confidence
 tagger/          — Read/write audio metadata via go-taglib
 scanner/         — Recursive directory scanner, extension filter
 frontend/src/    — Svelte UI: DropZone, FileTable, EditRow
-build/windows/   — NSIS installer + context menu registry entries
-build/darwin/    — macOS Quick Action for Finder context menu
-build/linux/     — Freedesktop .desktop + Nautilus/Dolphin scripts
+build/windows/   — NSIS installer: context menu, existing install detection, reinstall/uninstall
+build/darwin/    — macOS: install.sh (app + Quick Action), existing install detection
+build/linux/     — Linux: install-context-menu.sh (binary + Nautilus/Dolphin), existing install detection
 ```
 
 ## Key Patterns
@@ -34,9 +34,8 @@ build/linux/     — Freedesktop .desktop + Nautilus/Dolphin scripts
 - **Two save modes**: Copy to `AudioInk/` subfolder (originals untouched) or fix originals in place
 - **Featured artists**: `feat.`/`ft.` merged with main artist via `&`
 - **Extras**: `(Remix)`, `(Live)` etc. appended to end of filename and title tag
-- **Copy suffixes**: `— копия`, `- Copy`, `(2)` stripped automatically
 - **Drag & drop**: Uses Wails native `OnFileDrop` with `DisableWebViewDrop: true`
-- **Logging**: `audioink.log` created next to the exe
+- **Logging**: `audioink.log` next to the exe, append mode, shared by GUI and CLI
 
 ## Commands
 
@@ -44,8 +43,11 @@ build/linux/     — Freedesktop .desktop + Nautilus/Dolphin scripts
 # Dev mode (GUI)
 wails dev
 
-# Build
+# Build (exe only)
 wails build
+
+# Build with Windows installer (requires NSIS in PATH)
+wails build --nsis
 
 # Run tests
 go test ./...
@@ -59,15 +61,29 @@ AudioInk --fix file1.mp3 file2.mp3
 
 ## CLI Mode (--fix)
 
-`AudioInk --fix file1.mp3 file2.flac ...` runs headless: parses filenames, writes tags, renames files in place, shows a system toast notification with the result. Used by OS context menu integrations.
+`AudioInk --fix file1.mp3 file2.flac ...` runs headless: parses filenames, writes tags, renames files in place. Used by OS context menu integrations.
 
 Without arguments, AudioInk opens the GUI as usual.
 
+### Installers (all detect existing installations, offer reinstall/uninstall)
+
+- **Windows**: `build/windows/installer/project.nsi` — NSIS installer with registry-based detection
+- **macOS**: `build/darwin/install.sh` — copies .app + Quick Action, checks /Applications/
+- **Linux**: `build/linux/install-context-menu.sh` — installs binary + context menus, checks paths
+
 ### Context Menu Files
 
-- **Windows**: `build/windows/installer/project.nsi` — registry entries via NSIS
-- **macOS**: `build/darwin/AudioInk Fix.workflow/` — Automator Quick Action
-- **Linux**: `build/linux/` — Freedesktop .desktop + Nautilus/Dolphin scripts
+- **Windows**: Registry entries via NSIS (`HKCR\SystemFileAssociations`)
+- **macOS**: `build/darwin/AudioInk Fix.workflow/` — Automator Quick Action for Finder
+- **Linux**: Nautilus scripts + Dolphin service menus + Freedesktop .desktop
+
+## Parser Features
+
+- Title Case normalization (ALL CAPS / all lower → Title Case)
+- Trailing suffix stripping (`_01` track suffixes, `-21498` garbage IDs)
+- Hyphenated name cleanup (`police-siren` → `Police Siren`)
+- Copy suffix stripping (`— копия`, `- Copy`, `(2)`)
+- Featured artist extraction (`feat.`/`ft.` in artist or title)
 
 ## File Naming Convention
 
