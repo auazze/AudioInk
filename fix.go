@@ -66,6 +66,17 @@ func fixOneFile(filePath string) error {
 	allArtists = append(allArtists, pr.FeaturedArtists...)
 	artist := strings.Join(allArtists, " & ")
 
+	// Garbage filename: parser couldn't extract an artist
+	if pr.Confidence == parser.Low && artist == "" {
+		entry := promptManualEntry(filepath.Base(filePath))
+		if entry.Skipped {
+			logger.Printf("    skipped (manual entry)")
+			return nil
+		}
+		artist = entry.Artist
+		pr.Title = entry.Title
+	}
+
 	// Build tag title: title + extras in parens if any
 	tagTitle := pr.Title
 	if pr.Extras != "" {

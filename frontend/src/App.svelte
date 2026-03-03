@@ -1,7 +1,8 @@
 <script>
     import DropZone from './components/DropZone.svelte';
     import FileTable from './components/FileTable.svelte';
-    import { SelectFiles, SelectDirectory, ScanFiles, ApplyTagsCopy, ApplyTagsOverwrite, OpenOutputFolder } from '../wailsjs/go/main/App.js';
+    import ManualEntryDialog from './components/ManualEntryDialog.svelte';
+    import { SelectFiles, SelectDirectory, ScanFiles, ApplyTagsCopy, ApplyTagsOverwrite, ApplyQuick, OpenOutputFolder } from '../wailsjs/go/main/App.js';
     import { OnFileDrop } from '../wailsjs/runtime/runtime.js';
     import { onMount } from 'svelte';
 
@@ -13,6 +14,9 @@
     let done = false;
     let showChoice = false;
     let applyMode = '';
+    let garbageFiles = [];
+    let garbageIndex = 0;
+    let showManualEntry = false;
 
     $: readyCount = files.filter(f => f.confidence === 'high' || f.confidence === 'medium').length;
     $: reviewCount = files.filter(f => f.confidence === 'low').length;
@@ -29,6 +33,7 @@
             if (results && results.length > 0) {
                 files = results;
                 resetState();
+                checkForGarbageFiles();
             }
         } catch (err) {
             console.error('scan error:', err);
@@ -41,6 +46,7 @@
             if (results && results.length > 0) {
                 files = results;
                 resetState();
+                checkForGarbageFiles();
             }
         } catch (err) {
             console.error('file select error:', err);
@@ -53,6 +59,7 @@
             if (results && results.length > 0) {
                 files = results;
                 resetState();
+                checkForGarbageFiles();
             }
         } catch (err) {
             console.error('folder select error:', err);
@@ -66,6 +73,56 @@
         done = false;
         showChoice = false;
         applyMode = '';
+        garbageFiles = [];
+        garbageIndex = 0;
+        showManualEntry = false;
+    }
+
+    function checkForGarbageFiles() {
+        garbageFiles = files
+            .map((f, i) => ({ file: f, idx: i }))
+            .filter(({ file }) => file.confidence === 'low' && !file.artist);
+        garbageIndex = 0;
+        showManualEntry = garbageFiles.length > 0;
+    }
+
+    async function handleManualSubmit(e) {
+        const { artist, title } = e.detail;
+        const entry = garbageFiles[garbageIndex];
+        try {
+            const result = await ApplyQuick(entry.file.filePath, artist, title, '');
+            files[entry.idx] = {
+                ...files[entry.idx],
+                artist,
+                title,
+                confidence: 'high',
+                status: result.success ? 'done' : 'error',
+                statusError: result.error || '',
+                newFilename: result.newFilename || '',
+                outputFilename: result.newFilename || '',
+            };
+            files = files;
+        } catch (err) {
+            console.error('ApplyQuick error:', err);
+        }
+        advanceGarbage();
+    }
+
+    function handleManualSkip() {
+        files[garbageFiles[garbageIndex].idx] = {
+            ...files[garbageFiles[garbageIndex].idx],
+            skipped: true,
+        };
+        files = files;
+        advanceGarbage();
+    }
+
+    function advanceGarbage() {
+        garbageIndex++;
+        if (garbageIndex >= garbageFiles.length) {
+            showManualEntry = false;
+            files = files.filter(f => !f.skipped);
+        }
     }
 
     function handleUpdate(e) {
@@ -160,6 +217,16 @@
         <DropZone on:selectFiles={handleSelectFiles} on:selectFolder={handleSelectFolder} />
     {:else}
         <FileTable {files} showStatus={done} on:update={handleUpdate} />
+
+        {#if showManualEntry && garbageFiles[garbageIndex]}
+            <ManualEntryDialog
+                file={garbageFiles[garbageIndex].file}
+                index={garbageIndex + 1}
+                total={garbageFiles.length}
+                on:submit={handleManualSubmit}
+                on:skip={handleManualSkip}
+            />
+        {/if}
 
         {#if showChoice}
             <div class="choice-overlay" on:click|self={() => showChoice = false}>

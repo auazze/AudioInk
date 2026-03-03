@@ -260,6 +260,18 @@ func (a *App) ApplyTagsOverwrite(requests []ApplyRequest) []ApplyResult {
 	return a.processApply(requests, "", true)
 }
 
+// ApplyQuick applies tags and renames a single file in place.
+// Used by the frontend ManualEntryDialog for garbage filenames.
+func (a *App) ApplyQuick(filePath, artist, title, extras string) ApplyResult {
+	logger.Printf("=== ApplyQuick: %s ===", filePath)
+	req := ApplyRequest{FilePath: filePath, Artist: artist, Title: title, Extras: extras}
+	results := a.processApply([]ApplyRequest{req}, "", true)
+	if len(results) > 0 {
+		return results[0]
+	}
+	return ApplyResult{FilePath: filePath, Error: "no result"}
+}
+
 func (a *App) processApply(requests []ApplyRequest, outputDir string, overwrite bool) []ApplyResult {
 	results := make([]ApplyResult, 0, len(requests))
 
