@@ -6,7 +6,9 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 
 	"AudioInk/parser"
@@ -319,7 +321,19 @@ func (a *App) OpenOutputFolder(sourcePath string) {
 	sourceDir := filepath.Dir(sourcePath)
 	outputDir := filepath.Join(sourceDir, "_AudioInk_output")
 	logger.Printf("opening output folder: %s", outputDir)
-	runtime.BrowserOpenURL(a.ctx, outputDir)
+
+	var cmd *exec.Cmd
+	switch goruntime.GOOS {
+	case "windows":
+		cmd = exec.Command("explorer", outputDir)
+	case "darwin":
+		cmd = exec.Command("open", outputDir)
+	default:
+		cmd = exec.Command("xdg-open", outputDir)
+	}
+	if err := cmd.Start(); err != nil {
+		logger.Printf("failed to open folder: %v", err)
+	}
 }
 
 func copyFile(src, dst string) error {
