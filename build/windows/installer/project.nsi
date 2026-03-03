@@ -89,6 +89,9 @@ ShowInstDetails show # This will always show the installation details.
 Function .onInit
    !insertmacro wails.checkArchitecture
 
+   # Must match the 64-bit registry view used by wails.writeUninstaller
+   SetRegView 64
+
    # Check if AudioInk is already installed
    ReadRegStr $0 HKLM "${UNINST_KEY}" "UninstallString"
    StrCmp $0 "" done_check
@@ -101,18 +104,13 @@ Function .onInit
    Abort
 
    do_uninstall:
-       # Run uninstaller silently and wait
+       # Run uninstaller and wait, then abort installer
        ExecWait $0
        Abort
 
    do_reinstall:
        # Run uninstaller silently, then continue with install
-       # Strip quotes from uninstall string
-       StrCpy $2 $0 "" 1   # remove first quote
-       StrLen $3 $2
-       IntOp $3 $3 - 1
-       StrCpy $2 $2 $3     # remove last quote
-       ExecWait '"$2" /S'
+       ExecWait '$0 /S'
 
    done_check:
 FunctionEnd
@@ -123,6 +121,9 @@ Section
     !insertmacro wails.webview2runtime
 
     SetOutPath $INSTDIR
+
+    # Clean up legacy nested subfolder from older installs
+    RMDir /r "$INSTDIR\AudioInk"
 
     !insertmacro wails.files
 
