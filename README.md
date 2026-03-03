@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="logo.svg" alt="AudioInk" width="200">
+  <img src="logo.svg" alt="AudioInk" width="160">
 </p>
 
-<h1 align="center">AudioInk</h1>
+# AudioInk
 
 Lightweight desktop app that fixes audio file metadata. Parses filenames like `Artist - Song (feat. Someone).mp3` and writes correct ID3/Vorbis tags — artist, title, track number — then saves a clean copy with a proper filename.
 
