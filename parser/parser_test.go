@@ -105,7 +105,7 @@ func TestMultipleFeaturedArtists(t *testing.T) {
 
 func TestNoSeparator(t *testing.T) {
 	r := Parse("some random filename.mp3")
-	assertEq(t, r.Title, "some random filename")
+	assertEq(t, r.Title, "Some Random Filename")
 	assertEq(t, r.Artist, "")
 	assertConfidence(t, r.Confidence, Low)
 }
@@ -199,6 +199,88 @@ func TestBareDashWithFeat(t *testing.T) {
 	r := Parse("Tomoya Ohtani-Break Through It All.mp3")
 	assertEq(t, r.Artist, "Tomoya Ohtani")
 	assertEq(t, r.Title, "Break Through It All")
+}
+
+// === Trailing suffix stripping ===
+
+func TestTrackSuffix(t *testing.T) {
+	r := Parse("NF - GIVE ME A REASON_01.mp3")
+	assertEq(t, r.Artist, "NF")
+	assertEq(t, r.Title, "Give Me A Reason")
+	if r.Track != 1 {
+		t.Errorf("track: got %d, want 1", r.Track)
+	}
+}
+
+func TestTrailingId(t *testing.T) {
+	r := Parse("police-siren-21498.mp3")
+	assertEq(t, r.Artist, "Police")
+	assertEq(t, r.Title, "Siren")
+}
+
+func TestTrailingIdLong(t *testing.T) {
+	r := Parse("sound-effect-83621.mp3")
+	assertEq(t, r.Artist, "Sound")
+	assertEq(t, r.Title, "Effect")
+}
+
+// === Title case ===
+
+func TestTitleCaseAllCaps(t *testing.T) {
+	r := Parse("EMINEM - WITHOUT ME.mp3")
+	assertEq(t, r.Artist, "Eminem")
+	assertEq(t, r.Title, "Without Me")
+}
+
+func TestTitleCaseAllLower(t *testing.T) {
+	r := Parse("eminem - without me.mp3")
+	assertEq(t, r.Artist, "Eminem")
+	assertEq(t, r.Title, "Without Me")
+}
+
+func TestTitleCaseShortArtist(t *testing.T) {
+	// Short names (<=3 chars) like "NF" should stay unchanged
+	r := Parse("NF - The Search.mp3")
+	assertEq(t, r.Artist, "NF")
+	assertEq(t, r.Title, "The Search")
+}
+
+func TestTitleCaseMixedCaseUntouched(t *testing.T) {
+	// Already proper case — don't touch
+	r := Parse("Daft Punk - Get Lucky.mp3")
+	assertEq(t, r.Artist, "Daft Punk")
+	assertEq(t, r.Title, "Get Lucky")
+}
+
+func TestTitleCaseCyrillic(t *testing.T) {
+	r := Parse("кино - группа крови.mp3")
+	assertEq(t, r.Artist, "Кино")
+	assertEq(t, r.Title, "Группа Крови")
+}
+
+// === Hyphenated names ===
+
+func TestHyphenatedTitleNoSeparator(t *testing.T) {
+	r := Parse("lo-fi-hip-hop-beats.mp3")
+	assertEq(t, r.Title, "Lo Fi Hip Hop Beats")
+	assertEq(t, r.Artist, "")
+}
+
+func TestHyphenMixedCasePreserved(t *testing.T) {
+	// Mixed case hyphens like Wu-Tang should stay
+	r := Parse("Wu-Tang - Gravel Pit.mp3")
+	assertEq(t, r.Artist, "Wu-Tang")
+	assertEq(t, r.Title, "Gravel Pit")
+}
+
+func TestTrackSuffixWithPrefix(t *testing.T) {
+	// Prefix track takes priority over suffix
+	r := Parse("05. Artist - Title_03.mp3")
+	assertEq(t, r.Artist, "Artist")
+	assertEq(t, r.Title, "Title")
+	if r.Track != 5 {
+		t.Errorf("track: got %d, want 5 (prefix should win)", r.Track)
+	}
 }
 
 func assertEq(t *testing.T, got, want string) {

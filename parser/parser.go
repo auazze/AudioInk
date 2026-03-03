@@ -69,6 +69,12 @@ var featPatterns = []*regexp.Regexp{
 var copySuffixRe = regexp.MustCompile(`(?i)\s*[-—–]\s*(?:копия|copy|copia|copie|kopie)\s*(?:\(\d+\))?\s*$`)
 var copyNumberRe = regexp.MustCompile(`\s*\(\d+\)\s*$`)
 
+// Trailing track suffix: _01, _02, _1 (underscore + 1-3 digits at end)
+var trackSuffixRe = regexp.MustCompile(`_(\d{1,3})$`)
+
+// Trailing ID/garbage numbers: -21498, _83621 (separator + 4+ digits at end)
+var trailingIdRe = regexp.MustCompile(`[-_]\d{4,}$`)
+
 func Parse(path string) ParseResult {
 	filename := filepath.Base(path)
 	ext := filepath.Ext(filename)
@@ -84,8 +90,16 @@ func Parse(path string) ParseResult {
 	// Step 1: Strip copy suffixes (— копия, - Copy, (2), etc.)
 	name = stripCopySuffix(name)
 
+	// Step 1.5: Strip trailing garbage IDs (-21498) and track suffixes (_01)
+	name = stripTrailingId(name)
+	var trackFromSuffix int
+	name, trackFromSuffix = extractTrackSuffix(name)
+
 	// Step 2: Extract track number from beginning
 	name, result.Track = extractTrack(name)
+	if result.Track == 0 {
+		result.Track = trackFromSuffix
+	}
 
 	// Step 3: Extract featured artists from parentheses (feat. X)
 	name, result.FeaturedArtists = extractFeatInParens(name)
@@ -104,9 +118,14 @@ func Parse(path string) ParseResult {
 		result.Title = strings.TrimSpace(title)
 		result.Confidence = scoreConfidence(result)
 	} else {
-		result.Title = strings.TrimSpace(name)
+		// No separator found — clean up hyphenated names (police-siren → police siren)
+		result.Title = cleanHyphenatedName(strings.TrimSpace(name))
 		result.Confidence = Low
 	}
+
+	// Step 7: Apply title case to all-lowercase or ALL-CAPS names
+	result.Artist = titleCase(result.Artist)
+	result.Title = titleCase(result.Title)
 
 	return result
 }
@@ -286,6 +305,78 @@ func splitArtists(s string) []string {
 		}
 	}
 	return result
+}
+
+// extractTrackSuffix strips trailing _01, _02 etc. and returns the track number.
+func extractTrackSuffix(name string) (string, int) {
+	m := trackSuffixRe.FindStringSubmatch(name)
+	if m == nil {
+		return name, 0
+	}
+	num := 0
+	for _, c := range m[1] {
+		num = num*10 + int(c-'0')
+	}
+	return strings.TrimSpace(trackSuffixRe.ReplaceAllString(name, "")), num
+}
+
+// stripTrailingId removes garbage ID numbers from end of filename (-21498, _83621).
+func stripTrailingId(name string) string {
+	return strings.TrimSpace(trailingIdRe.ReplaceAllString(name, ""))
+}
+
+// cleanHyphenatedName replaces hyphens with spaces when all parts between
+// hyphens are lowercase (looks like word-separating hyphens, not names like Wu-Tang).
+func cleanHyphenatedName(name string) string {
+	if !strings.Contains(name, "-") {
+		return name
+	}
+	parts := strings.Split(name, "-")
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		// If any part has uppercase letters, keep hyphens (could be a name)
+		if p != strings.ToLower(p) {
+			return name
+		}
+	}
+	// All parts lowercase — replace hyphens with spaces
+	cleaned := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			cleaned = append(cleaned, p)
+		}
+	}
+	return strings.Join(cleaned, " ")
+}
+
+// titleCase capitalizes the first letter of each word.
+// Only applied when the string is ALL CAPS or all lowercase (and > 3 chars).
+// Short strings (1-3 chars) like "NF" or "DJ" are left unchanged.
+func titleCase(s string) string {
+	runes := []rune(s)
+	if len(runes) <= 3 {
+		return s
+	}
+
+	lower := strings.ToLower(s)
+	upper := strings.ToUpper(s)
+
+	// Only transform if uniformly cased
+	if s != lower && s != upper {
+		return s
+	}
+
+	words := strings.Fields(lower)
+	for i, w := range words {
+		r := []rune(w)
+		r[0] = unicode.ToUpper(r[0])
+		words[i] = string(r)
+	}
+	return strings.Join(words, " ")
 }
 
 func scoreConfidence(r ParseResult) Confidence {
