@@ -23,14 +23,16 @@ const outputFolderName = "AudioInk"
 var logger *log.Logger
 
 func initLogger() {
+	if logger != nil {
+		return // already initialized
+	}
 	exe, _ := os.Executable()
 	logPath := filepath.Join(filepath.Dir(exe), "audioink.log")
-	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		f, _ = os.OpenFile("audioink.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+		f, _ = os.OpenFile("audioink.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	}
-	logger = log.New(f, "", log.Ltime)
-	logger.Println("=== AudioInk started ===")
+	logger = log.New(f, "", log.Ldate|log.Ltime)
 }
 
 type App struct {

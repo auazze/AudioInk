@@ -15,23 +15,28 @@ import (
 // It writes corrected metadata tags and renames files to match the parsed structure.
 // Returns 0 on full success, 1 if any errors occurred or no files were provided.
 func runFix(paths []string) int {
+	initLogger()
+	logger.Printf("=== --fix called with %d paths ===", len(paths))
+
 	supported := scanner.FilterSupported(paths)
 
 	if len(paths) == 0 {
-		fmt.Fprintln(os.Stderr, "audioink: no files provided")
+		logger.Println("no files provided")
 		return 1
 	}
 	if len(supported) == 0 {
-		fmt.Fprintln(os.Stderr, "audioink: no supported audio files found")
+		logger.Printf("no supported audio files (got %d unsupported)", len(paths))
 		return 1
 	}
+
+	logger.Printf("%d supported files", len(supported))
 
 	successes := 0
 	errors := 0
 
 	for _, f := range supported {
 		if err := fixOneFile(f); err != nil {
-			fmt.Fprintf(os.Stderr, "audioink: %s: %v\n", filepath.Base(f), err)
+			logger.Printf("  ERROR %s: %v", filepath.Base(f), err)
 			errors++
 		} else {
 			successes++
@@ -40,6 +45,7 @@ func runFix(paths []string) int {
 
 	total := len(supported)
 	showNotification(successes, errors, total)
+	logger.Printf("=== Done: %d/%d successful ===", successes, total)
 
 	if errors > 0 {
 		return 1
@@ -49,6 +55,7 @@ func runFix(paths []string) int {
 
 // fixOneFile parses the filename, writes corrected tags, and renames the file.
 func fixOneFile(filePath string) error {
+	logger.Printf("  fixing: %s", filepath.Base(filePath))
 	pr := parser.Parse(filePath)
 
 	// Build artist: main artist + featured joined with " & "
@@ -65,6 +72,9 @@ func fixOneFile(filePath string) error {
 		tagTitle = tagTitle + " (" + pr.Extras + ")"
 	}
 
+	logger.Printf("    parsed: artist=%q title=%q track=%d confidence=%s",
+		artist, tagTitle, pr.Track, pr.Confidence)
+
 	// Write tags
 	tags := tagger.Tags{
 		Artist: artist,
@@ -79,15 +89,19 @@ func fixOneFile(filePath string) error {
 	ext := filepath.Ext(pr.Filename)
 	newFilename := buildNewFilename(artist, pr.Title, pr.Extras, ext)
 	if newFilename == "" {
+		logger.Println("    no rename needed (empty filename)")
 		return nil
 	}
 
 	newPath := filepath.Join(filepath.Dir(filePath), newFilename)
 	if newPath != filePath {
 		newPath = uniquePath(newPath)
+		logger.Printf("    rename → %s", filepath.Base(newPath))
 		if err := os.Rename(filePath, newPath); err != nil {
 			return fmt.Errorf("rename: %w", err)
 		}
+	} else {
+		logger.Println("    name already correct, tags updated")
 	}
 
 	return nil
