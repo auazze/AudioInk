@@ -150,24 +150,25 @@ func Parse(path string) ParseResult {
 		result.Title = strings.TrimSpace(title)
 		result.Confidence = scoreConfidence(result)
 	} else {
-		// No separator found — clean up hyphenated names (police-siren → police siren)
+		// No separator found — check if it's a platform-style hyphenated name
+		wasHyphenatedName := isAllLowerHyphenated(strings.TrimSpace(name))
+
+		// Clean up hyphenated names (police-siren → police siren)
 		result.Title = cleanHyphenatedName(strings.TrimSpace(name))
 		result.Confidence = Low
 
 		// Heuristic: if the filename was purely underscore-delimited (VK, SoundCloud, etc.)
-		// try splitting into artist / title by word count:
-		//   2 words → [1] artist + [1] title
-		//   3+ words → [2] artist + [rest] title
-		if wasUnderscoreName {
+		// or all-lowercase-hyphenated (Bandcamp, SoundCloud, etc.),
+		// split first segment(s) as artist, rest as title.
+		if wasUnderscoreName || wasHyphenatedName {
 			words := strings.Fields(result.Title)
 			if len(words) >= 2 {
 				splitAt := 1
-				if len(words) >= 3 {
+				if len(words) >= 3 && wasUnderscoreName {
 					splitAt = 2
 				}
 				result.Artist = strings.Join(words[:splitAt], " ")
 				result.Title = strings.Join(words[splitAt:], " ")
-				result.Confidence = Medium
 			}
 		}
 	}
@@ -531,6 +532,25 @@ func stripTrailingGarbageWords(name string) string {
 		}
 	}
 	return strings.Join(words, " ")
+}
+
+// isAllLowerHyphenated returns true if the name is all-lowercase with hyphens
+// and at least 2 segments (typical platform-generated filename: artist-song-title).
+func isAllLowerHyphenated(name string) bool {
+	if !strings.Contains(name, "-") {
+		return false
+	}
+	parts := strings.Split(name, "-")
+	if len(parts) < 2 {
+		return false
+	}
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" || p != strings.ToLower(p) {
+			return false
+		}
+	}
+	return true
 }
 
 // cleanHyphenatedName replaces hyphens with spaces when all parts are lowercase.

@@ -7,9 +7,10 @@
 
     const dispatch = createEventDispatcher();
 
-    let artist = '';
+    let artist = file.artist || '';
     let title = file.title || '';
     let artistInput;
+
 
     onMount(() => {
         if (artistInput) artistInput.focus();
@@ -34,6 +35,12 @@
     <div class="choice-dialog manual-dialog">
         <p class="choice-title">Manual entry ({index}/{total})</p>
         <p class="dialog-filename" title={file.filename}>{file.filename}</p>
+
+        {#if file.artist || file.title}
+            <p class="dialog-suggestion">
+                {file.artist || '?'} — {file.title || '?'}
+            </p>
+        {/if}
 
         <label class="field-label">
             Artist
@@ -74,8 +81,22 @@
         width: 380px;
     }
 
+    .dialog-suggestion {
+        margin: 0 0 12px;
+        padding: 6px 10px;
+        background: rgba(120, 180, 120, 0.1);
+        border: 1px solid rgba(120, 180, 120, 0.25);
+        border-radius: 6px;
+        font-size: 12px;
+        color: var(--green, #78b478);
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
     .dialog-filename {
-        margin: 0 0 16px;
+        margin: 0 0 8px;
         font-size: 12px;
         color: var(--text-dim);
         white-space: nowrap;

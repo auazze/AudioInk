@@ -11,9 +11,16 @@ import (
 	"AudioInk/tagger"
 )
 
-// runFix processes audio files in headless CLI mode.
-// It writes corrected metadata tags and renames files to match the parsed structure.
-// Returns 0 on full success, 1 if any errors occurred or no files were provided.
+type parsedFile struct {
+	filePath string
+	artist   string
+	title    string
+	extras   string
+	track    int
+	filename string
+	lowConf  bool
+}
+
 func runFix(paths []string) int {
 	initLogger()
 	logger.Printf("=== --fix called with %d paths ===", len(paths))
@@ -31,12 +38,66 @@ func runFix(paths []string) int {
 
 	logger.Printf("%d supported files", len(supported))
 
+	parsed := make([]parsedFile, 0, len(supported))
+	var pending []PendingFile
+	var pendingIndices []int
+
+	for _, f := range supported {
+		pr := parser.Parse(f)
+
+		allArtists := []string{}
+		if pr.Artist != "" {
+			allArtists = append(allArtists, pr.Artist)
+		}
+		allArtists = append(allArtists, pr.FeaturedArtists...)
+		artist := strings.Join(allArtists, " & ")
+
+		pf := parsedFile{
+			filePath: f,
+			artist:   artist,
+			title:    pr.Title,
+			extras:   pr.Extras,
+			track:    pr.Track,
+			filename: pr.Filename,
+			lowConf:  pr.Confidence == parser.Low,
+		}
+		parsed = append(parsed, pf)
+
+		if pf.lowConf {
+			pendingIndices = append(pendingIndices, len(parsed)-1)
+			pending = append(pending, PendingFile{
+				Filename: pr.Filename,
+				Artist:   artist,
+				Title:    pr.Title,
+			})
+		}
+	}
+
+	if len(pending) > 0 {
+		results := showConfirmDialog(pending)
+		for i, idx := range pendingIndices {
+			if i < len(results) {
+				if results[i].Skipped {
+					parsed[idx].lowConf = true
+				} else {
+					parsed[idx].artist = results[i].Artist
+					parsed[idx].title = results[i].Title
+					parsed[idx].lowConf = false
+				}
+			}
+		}
+	}
+
 	successes := 0
 	errors := 0
 
-	for _, f := range supported {
-		if err := fixOneFile(f); err != nil {
-			logger.Printf("  ERROR %s: %v", filepath.Base(f), err)
+	for _, pf := range parsed {
+		if pf.lowConf {
+			logger.Printf("  skipped (manual entry): %s", filepath.Base(pf.filePath))
+			continue
+		}
+		if err := fixOneFile(pf); err != nil {
+			logger.Printf("  ERROR %s: %v", filepath.Base(pf.filePath), err)
 			errors++
 		} else {
 			successes++
@@ -53,70 +114,45 @@ func runFix(paths []string) int {
 	return 0
 }
 
-// fixOneFile parses the filename, writes corrected tags, and renames the file.
-func fixOneFile(filePath string) error {
-	logger.Printf("  fixing: %s", filepath.Base(filePath))
-	pr := parser.Parse(filePath)
+func fixOneFile(pf parsedFile) error {
+	logger.Printf("  fixing: %s", filepath.Base(pf.filePath))
 
-	// Build artist: main artist + featured joined with " & "
-	allArtists := []string{}
-	if pr.Artist != "" {
-		allArtists = append(allArtists, pr.Artist)
-	}
-	allArtists = append(allArtists, pr.FeaturedArtists...)
-	artist := strings.Join(allArtists, " & ")
-
-	// Garbage filename: parser couldn't extract an artist
-	if pr.Confidence == parser.Low && artist == "" {
-		entry := promptManualEntry(filepath.Base(filePath))
-		if entry.Skipped {
-			logger.Printf("    skipped (manual entry)")
-			return nil
-		}
-		artist = entry.Artist
-		pr.Title = entry.Title
+	tagTitle := pf.title
+	if pf.extras != "" {
+		tagTitle = tagTitle + " (" + pf.extras + ")"
 	}
 
-	// Build tag title: title + extras in parens if any
-	tagTitle := pr.Title
-	if pr.Extras != "" {
-		tagTitle = tagTitle + " (" + pr.Extras + ")"
-	}
+	logger.Printf("    parsed: artist=%q title=%q track=%d",
+		pf.artist, tagTitle, pf.track)
 
-	logger.Printf("    parsed: artist=%q title=%q track=%d confidence=%s",
-		artist, tagTitle, pr.Track, pr.Confidence)
-
-	// Write tags
 	tags := tagger.Tags{
-		Artist: artist,
+		Artist: pf.artist,
 		Title:  tagTitle,
-		Track:  pr.Track,
+		Track:  pf.track,
 	}
-	if err := tagger.Write(filePath, tags); err != nil {
+	if err := tagger.Write(pf.filePath, tags); err != nil {
 		return fmt.Errorf("write tags: %w", err)
 	}
 
-	// Build new filename and rename if different
-	ext := filepath.Ext(pr.Filename)
-	newFilename := buildNewFilename(artist, pr.Title, pr.Extras, ext)
+	ext := filepath.Ext(pf.filename)
+	newFilename := buildNewFilename(pf.artist, pf.title, pf.extras, ext)
 	if newFilename == "" {
 		logger.Println("    no rename needed (empty filename)")
 		return nil
 	}
 
-	newPath := filepath.Join(filepath.Dir(filePath), newFilename)
-	if newPath == filePath {
+	newPath := filepath.Join(filepath.Dir(pf.filePath), newFilename)
+	if newPath == pf.filePath {
 		logger.Println("    name already correct, tags updated")
-	} else if pathsEqual(newPath, filePath) {
-		// Only case changed (e.g. "novikov" → "Novikov") — rename directly
-		logger.Printf("    rename (case fix) → %s", filepath.Base(newPath))
-		if err := os.Rename(filePath, newPath); err != nil {
+	} else if pathsEqual(newPath, pf.filePath) {
+		logger.Printf("    rename (case fix) -> %s", filepath.Base(newPath))
+		if err := os.Rename(pf.filePath, newPath); err != nil {
 			return fmt.Errorf("rename: %w", err)
 		}
 	} else {
 		newPath = uniquePath(newPath)
-		logger.Printf("    rename → %s", filepath.Base(newPath))
-		if err := os.Rename(filePath, newPath); err != nil {
+		logger.Printf("    rename -> %s", filepath.Base(newPath))
+		if err := os.Rename(pf.filePath, newPath); err != nil {
 			return fmt.Errorf("rename: %w", err)
 		}
 	}

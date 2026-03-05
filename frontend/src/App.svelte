@@ -2,10 +2,12 @@
     import DropZone from './components/DropZone.svelte';
     import FileTable from './components/FileTable.svelte';
     import ManualEntryDialog from './components/ManualEntryDialog.svelte';
-    import { SelectFiles, SelectDirectory, ScanFiles, ApplyTagsCopy, ApplyTagsOverwrite, ApplyQuick, OpenOutputFolder } from '../wailsjs/go/main/App.js';
+    import ConfirmView from './components/ConfirmView.svelte';
+    import { SelectFiles, SelectDirectory, ScanFiles, ApplyTagsCopy, ApplyTagsOverwrite, ApplyQuick, OpenOutputFolder, IsConfirmMode } from '../wailsjs/go/main/App.js';
     import { OnFileDrop } from '../wailsjs/runtime/runtime.js';
     import { onMount } from 'svelte';
 
+    let confirmMode = false;
     let files = [];
     let applying = false;
     let appliedCount = 0;
@@ -21,10 +23,13 @@
     $: readyCount = files.filter(f => f.confidence === 'high' || f.confidence === 'medium').length;
     $: reviewCount = files.filter(f => f.confidence === 'low').length;
 
-    onMount(() => {
-        OnFileDrop((x, y, paths) => {
-            handleDroppedPaths(paths);
-        }, true);
+    onMount(async () => {
+        confirmMode = await IsConfirmMode();
+        if (!confirmMode) {
+            OnFileDrop((x, y, paths) => {
+                handleDroppedPaths(paths);
+            }, true);
+        }
     });
 
     async function handleDroppedPaths(paths) {
@@ -81,7 +86,7 @@
     function checkForGarbageFiles() {
         garbageFiles = files
             .map((f, i) => ({ file: f, idx: i }))
-            .filter(({ file }) => file.confidence === 'low' && !file.artist);
+            .filter(({ file }) => file.confidence === 'low');
         garbageIndex = 0;
         showManualEntry = garbageFiles.length > 0;
     }
@@ -208,6 +213,9 @@
     }
 </script>
 
+{#if confirmMode}
+    <ConfirmView />
+{:else}
 <div class="app" style="--wails-drop-target: drop">
     <header class="titlebar">
         <span class="title">AudioInk</span>
@@ -289,6 +297,7 @@
         </footer>
     {/if}
 </div>
+{/if}
 
 <style>
     .app {

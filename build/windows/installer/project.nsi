@@ -69,7 +69,7 @@ ManifestDPIAware true
 # Macro to register context menu for one audio extension
 !macro RegisterContextMenu EXT
     WriteRegStr HKCR "SystemFileAssociations\${EXT}\shell\AudioInk" "" "AudioInk: Fix name && tags"
-    WriteRegStr HKCR "SystemFileAssociations\${EXT}\shell\AudioInk" "Icon" "$INSTDIR\${PRODUCT_EXECUTABLE}"
+    WriteRegStr HKCR "SystemFileAssociations\${EXT}\shell\AudioInk" "Icon" "$INSTDIR\icon.ico"
     WriteRegStr HKCR "SystemFileAssociations\${EXT}\shell\AudioInk\command" "" '"$INSTDIR\${PRODUCT_EXECUTABLE}" --fix "%1"'
 !macroend
 
@@ -88,6 +88,10 @@ ShowInstDetails show # This will always show the installation details.
 
 Function .onInit
    !insertmacro wails.checkArchitecture
+
+   # Kill running AudioInk processes before installing
+   nsExec::Exec 'taskkill /f /im ${PRODUCT_EXECUTABLE}'
+   Pop $R0 # discard taskkill exit code
 
    # Must match the 64-bit registry view used by wails.writeUninstaller
    SetRegView 64
@@ -126,6 +130,9 @@ Section
     RMDir /r "$INSTDIR\AudioInk"
 
     !insertmacro wails.files
+
+    # Copy icon for context menu (avoids loading 14MB exe for icon extraction)
+    File "/oname=icon.ico" "..\icon.ico"
 
     CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
     CreateShortCut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"

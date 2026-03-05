@@ -261,9 +261,22 @@ func TestTitleCaseCyrillic(t *testing.T) {
 // === Hyphenated names ===
 
 func TestHyphenatedTitleNoSeparator(t *testing.T) {
+	// All-lowercase hyphenated names: first segment = artist guess, rest = title
 	r := Parse("lo-fi-hip-hop-beats.mp3")
-	assertEq(t, r.Title, "Lo Fi Hip Hop Beats")
-	assertEq(t, r.Artist, "")
+	assertEq(t, r.Artist, "Lo")
+	assertEq(t, r.Title, "Fi Hip Hop Beats")
+	if r.Confidence != Low {
+		t.Errorf("expected Low confidence, got %s", r.Confidence)
+	}
+}
+
+func TestHyphenatedPlatformFilename(t *testing.T) {
+	r := Parse("auazze-sold-to-the-wolves.mp3")
+	assertEq(t, r.Artist, "Auazze")
+	assertEq(t, r.Title, "Sold To The Wolves")
+	if r.Confidence != Low {
+		t.Errorf("expected Low confidence, got %s", r.Confidence)
+	}
 }
 
 func TestHyphenMixedCasePreserved(t *testing.T) {
@@ -289,7 +302,7 @@ func TestVkFilename(t *testing.T) {
 	r := Parse("aleksandr_novikov_roza_713893675_456239280_9dcc104f.mp3")
 	assertEq(t, r.Artist, "Aleksandr Novikov")
 	assertEq(t, r.Title, "Roza")
-	assertConfidence(t, r.Confidence, Medium)
+	assertConfidence(t, r.Confidence, Low)
 }
 
 func TestVkFilenameWithCopySuffix(t *testing.T) {

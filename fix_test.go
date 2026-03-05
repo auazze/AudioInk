@@ -32,7 +32,13 @@ func TestRunFix_UnsupportedExtensions(t *testing.T) {
 }
 
 func TestFixOneFile_NonexistentFile(t *testing.T) {
-	err := fixOneFile("/nonexistent/path/Artist - Title.mp3")
+	pf := parsedFile{
+		filePath: "/nonexistent/path/Artist - Title.mp3",
+		artist:   "Artist",
+		title:    "Title",
+		filename: "Artist - Title.mp3",
+	}
+	err := fixOneFile(pf)
 	if err == nil {
 		t.Fatal("fixOneFile on nonexistent file should return an error")
 	}
@@ -50,8 +56,13 @@ func TestFixOneFile_EmptyFileNoRename(t *testing.T) {
 		t.Fatalf("failed to create fake file: %v", err)
 	}
 
-	// Should either succeed (taglib writes tags) or return a clear error.
-	_ = fixOneFile(fakeFile)
+	pf := parsedFile{
+		filePath: fakeFile,
+		artist:   "Artist",
+		title:    "Title",
+		filename: "Artist - Title.mp3",
+	}
+	_ = fixOneFile(pf)
 }
 
 func TestRunFix_AllFilesFail(t *testing.T) {

@@ -35,13 +35,50 @@ func initLogger() {
 	logger = log.New(f, "", log.Ldate|log.Ltime)
 }
 
+type PendingFile struct {
+	Filename string `json:"filename"`
+	Artist   string `json:"artist"`
+	Title    string `json:"title"`
+}
+
 type App struct {
-	ctx context.Context
+	ctx            context.Context
+	confirmMode    bool
+	pendingFiles   []PendingFile
+	confirmResults []ManualEntry
+	confirmDone    chan struct{}
 }
 
 func NewApp() *App {
 	initLogger()
 	return &App{}
+}
+
+func (a *App) IsConfirmMode() bool {
+	return a.confirmMode
+}
+
+func (a *App) GetPendingFiles() []PendingFile {
+	return a.pendingFiles
+}
+
+func (a *App) ConfirmSubmit(index int, artist, title string) {
+	if index >= 0 && index < len(a.confirmResults) {
+		a.confirmResults[index] = ManualEntry{Artist: artist, Title: title}
+	}
+}
+
+func (a *App) ConfirmSkip(index int) {
+	if index >= 0 && index < len(a.confirmResults) {
+		a.confirmResults[index] = ManualEntry{Skipped: true}
+	}
+}
+
+func (a *App) ConfirmDone() {
+	if a.confirmDone != nil {
+		close(a.confirmDone)
+	}
+	runtime.Quit(a.ctx)
 }
 
 func (a *App) startup(ctx context.Context) {
