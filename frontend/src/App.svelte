@@ -3,10 +3,12 @@
     import FileTable from './components/FileTable.svelte';
     import ManualEntryDialog from './components/ManualEntryDialog.svelte';
     import ConfirmView from './components/ConfirmView.svelte';
-    import { SelectFiles, SelectDirectory, ScanFiles, ApplyTagsCopy, ApplyTagsOverwrite, ApplyQuick, OpenOutputFolder, IsConfirmMode } from '../wailsjs/go/main/App.js';
+    import ModeChooser from './components/ModeChooser.svelte';
+    import { SelectFiles, SelectDirectory, ScanFiles, ApplyTagsCopy, ApplyTagsOverwrite, ApplyQuick, OpenOutputFolder, IsConfirmMode, IsChooserMode, GetInitialFiles, UndoLast, RedoLast } from '../wailsjs/go/main/App.js';
     import { OnFileDrop } from '../wailsjs/runtime/runtime.js';
     import { onMount } from 'svelte';
 
+    let chooserMode = false;
     let confirmMode = false;
     let files = [];
     let applying = false;
@@ -19,16 +21,30 @@
     let garbageFiles = [];
     let garbageIndex = 0;
     let showManualEntry = false;
+    let bulkArtist = '';
+    let bulkTitle = '';
+    let undoMessage = '';
 
     $: readyCount = files.filter(f => f.confidence === 'high' || f.confidence === 'medium').length;
     $: reviewCount = files.filter(f => f.confidence === 'low').length;
 
     onMount(async () => {
+        chooserMode = await IsChooserMode();
+        if (chooserMode) return;
+
         confirmMode = await IsConfirmMode();
-        if (!confirmMode) {
-            OnFileDrop((x, y, paths) => {
-                handleDroppedPaths(paths);
-            }, true);
+        if (confirmMode) return;
+
+        OnFileDrop((x, y, paths) => {
+            handleDroppedPaths(paths);
+        }, true);
+
+        // Load files passed from context menu → "Open in AudioInk"
+        const initial = await GetInitialFiles();
+        if (initial && initial.length > 0) {
+            files = initial;
+            resetState();
+            checkForGarbageFiles();
         }
     });
 
@@ -130,6 +146,43 @@
         }
     }
 
+    async function handleBatch(e) {
+        const { useArtist, useTitle } = e.detail;
+        for (let i = garbageIndex; i < garbageFiles.length; i++) {
+            const entry = garbageFiles[i];
+            const file = entry.file;
+
+            let batchArtist = file.artist || '';
+            let batchTitle = file.title || '';
+
+            if (useArtist && file.cleanMetaArtist) batchArtist = file.cleanMetaArtist;
+            if (useTitle && file.cleanMetaTitle) batchTitle = file.cleanMetaTitle;
+
+            if (!batchArtist && !batchTitle) {
+                files[entry.idx] = { ...files[entry.idx], skipped: true };
+                continue;
+            }
+
+            try {
+                const result = await ApplyQuick(file.filePath, batchArtist, batchTitle, file.extras || '');
+                files[entry.idx] = {
+                    ...files[entry.idx],
+                    artist: batchArtist,
+                    title: batchTitle,
+                    confidence: 'high',
+                    status: result.success ? 'done' : 'error',
+                    statusError: result.error || '',
+                    newFilename: result.newFilename || '',
+                    outputFilename: result.newFilename || '',
+                };
+            } catch (err) {
+                console.error('ApplyQuick batch error:', err);
+            }
+        }
+        files = files.filter(f => !f.skipped);
+        showManualEntry = false;
+    }
+
     function handleUpdate(e) {
         const { index, field, value } = e.detail;
         files[index] = { ...files[index], [field]: value, confidence: 'high' };
@@ -193,6 +246,9 @@
             }
             files = files;
             done = true;
+
+            // Auto-rescan so the user can keep editing
+            setTimeout(() => rescanAfterApply(), 800);
         } catch (err) {
             console.error('apply error:', err);
             errorCount = files.length;
@@ -211,9 +267,85 @@
         files = [];
         resetState();
     }
+
+    let bulkFlash = '';
+
+    function setAllArtist() {
+        if (!bulkArtist.trim()) return;
+        for (let i = 0; i < files.length; i++) {
+            files[i] = { ...files[i], artist: bulkArtist.trim(), confidence: 'high' };
+            const f = files[i];
+            const ext = f.filename.substring(f.filename.lastIndexOf('.'));
+            let name = f.artist + ' - ' + (f.title || '');
+            if (f.extras) name += ' (' + f.extras + ')';
+            if (f.title) files[i].newFilename = name + ext;
+        }
+        files = files;
+        showBulkFlash(`Artist "${bulkArtist.trim()}" set for ${files.length} files`);
+    }
+
+    function setAllTitle() {
+        if (!bulkTitle.trim()) return;
+        for (let i = 0; i < files.length; i++) {
+            files[i] = { ...files[i], title: bulkTitle.trim(), confidence: 'high' };
+            const f = files[i];
+            const ext = f.filename.substring(f.filename.lastIndexOf('.'));
+            let name = (f.artist || '') + (f.artist && f.title ? ' - ' : '') + f.title;
+            if (f.extras) name += ' (' + f.extras + ')';
+            if (name) files[i].newFilename = name + ext;
+        }
+        files = files;
+        showBulkFlash(`Title "${bulkTitle.trim()}" set for ${files.length} files`);
+    }
+
+    function showBulkFlash(msg) {
+        bulkFlash = msg;
+        setTimeout(() => bulkFlash = '', 2500);
+    }
+
+    async function rescanPaths(paths) {
+        if (!paths || paths.length === 0) return;
+        const results = await ScanFiles(paths);
+        if (results && results.length > 0) {
+            files = results;
+            resetState();
+            checkForGarbageFiles();
+        }
+    }
+
+    async function rescanAfterApply() {
+        const paths = applyResults
+            .filter(r => r.success && (r.newPath || r.filePath))
+            .map(r => r.newPath || r.filePath);
+        await rescanPaths(paths);
+    }
+
+    async function handleUndo() {
+        try {
+            const paths = await UndoLast();
+            undoMessage = `Undo: ${paths.length} files reverted`;
+            await rescanPaths(paths);
+        } catch (err) {
+            undoMessage = '' + (err.message || err);
+        }
+        setTimeout(() => undoMessage = '', 3000);
+    }
+
+    async function handleRedo() {
+        try {
+            const paths = await RedoLast();
+            undoMessage = `Redo: ${paths.length} files reapplied`;
+            await rescanPaths(paths);
+        } catch (err) {
+            undoMessage = '' + (err.message || err);
+        }
+        setTimeout(() => undoMessage = '', 3000);
+    }
 </script>
 
-{#if confirmMode}
+{#if chooserMode}
+    <ModeChooser />
+{:else if confirmMode}
     <ConfirmView />
 {:else}
 <div class="app" style="--wails-drop-target: drop">
@@ -224,16 +356,34 @@
     {#if files.length === 0}
         <DropZone on:selectFiles={handleSelectFiles} on:selectFolder={handleSelectFolder} />
     {:else}
-        <FileTable {files} showStatus={done} on:update={handleUpdate} />
+        {#if !done}
+            <div class="bulk-bar">
+                <div class="bulk-field">
+                    <span class="bulk-label">Artist:</span>
+                    <input class="bulk-input" bind:value={bulkArtist} placeholder="e.g. auazze" on:keydown={e => e.key === 'Enter' && setAllArtist()} />
+                    <button class="bulk-btn" on:click={setAllArtist} disabled={!bulkArtist.trim()}>Set all</button>
+                </div>
+                <div class="bulk-field">
+                    <span class="bulk-label">Title:</span>
+                    <input class="bulk-input" bind:value={bulkTitle} placeholder="e.g. Song Name" on:keydown={e => e.key === 'Enter' && setAllTitle()} />
+                    <button class="bulk-btn" on:click={setAllTitle} disabled={!bulkTitle.trim()}>Set all</button>
+                </div>
+            </div>
+        {/if}
+
+        <FileTable {files} showStatus={done} pendingArtist={done ? '' : bulkArtist.trim()} pendingTitle={done ? '' : bulkTitle.trim()} on:update={handleUpdate} />
 
         {#if showManualEntry && garbageFiles[garbageIndex]}
-            <ManualEntryDialog
-                file={garbageFiles[garbageIndex].file}
-                index={garbageIndex + 1}
-                total={garbageFiles.length}
-                on:submit={handleManualSubmit}
-                on:skip={handleManualSkip}
-            />
+            {#key garbageIndex}
+                <ManualEntryDialog
+                    file={garbageFiles[garbageIndex].file}
+                    index={garbageIndex + 1}
+                    total={garbageFiles.length}
+                    on:submit={handleManualSubmit}
+                    on:skip={handleManualSkip}
+                    on:batch={handleBatch}
+                />
+            {/key}
         {/if}
 
         {#if showChoice}
@@ -272,14 +422,15 @@
                 {/if}
             </div>
             <div class="actions">
-                {#if done && applyMode === 'copy'}
-                    <button class="btn-open" on:click={openOutput}>
-                        Open output folder
-                    </button>
+                {#if undoMessage}
+                    <span class="undo-msg">{undoMessage}</span>
                 {/if}
-                <button class="btn-reset" on:click={clearAll}>
-                    Clear
-                </button>
+                <button class="btn-undo" on:click={handleUndo} title="Undo last batch">Undo</button>
+                <button class="btn-undo" on:click={handleRedo} title="Redo last undo">Redo</button>
+                {#if done && applyMode === 'copy'}
+                    <button class="btn-open" on:click={openOutput}>Open output folder</button>
+                {/if}
+                <button class="btn-reset" on:click={clearAll}>Clear</button>
                 {#if !done}
                     <button
                         class="btn-apply"
@@ -305,6 +456,86 @@
         display: flex;
         flex-direction: column;
         background: var(--bg);
+    }
+
+    .bulk-bar {
+        display: flex;
+        gap: 12px;
+        padding: 8px 16px;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface);
+    }
+
+    .bulk-field {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: 1;
+    }
+
+    .bulk-label {
+        font-size: 11px;
+        color: var(--text-dim);
+        flex-shrink: 0;
+    }
+
+    .bulk-input {
+        flex: 1;
+        padding: 5px 10px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        color: var(--text);
+        font-size: 12px;
+        outline: none;
+    }
+
+    .bulk-input:focus { border-color: var(--accent); }
+
+    .bulk-btn {
+        padding: 5px 10px;
+        border: 1px solid var(--accent);
+        border-radius: 5px;
+        background: rgba(99, 102, 241, 0.1);
+        color: var(--accent);
+        font-size: 11px;
+        cursor: pointer;
+        transition: all 0.15s;
+        white-space: nowrap;
+    }
+
+    .bulk-btn:hover:not(:disabled) { background: rgba(99, 102, 241, 0.2); }
+    .bulk-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .bulk-flash {
+        font-size: 11px;
+        color: var(--green, #78b478);
+        white-space: nowrap;
+        flex-shrink: 0;
+        animation: fadeIn 0.2s;
+    }
+
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    .btn-undo {
+        padding: 6px 12px;
+        border: 1px solid rgba(251, 191, 36, 0.4);
+        border-radius: 6px;
+        background: rgba(251, 191, 36, 0.08);
+        color: var(--yellow, #fbbf24);
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+
+    .btn-undo:hover {
+        background: rgba(251, 191, 36, 0.15);
+        border-color: var(--yellow, #fbbf24);
+    }
+
+    .undo-msg {
+        font-size: 11px;
+        color: var(--green, #78b478);
     }
 
     .titlebar {

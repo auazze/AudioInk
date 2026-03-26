@@ -148,7 +148,7 @@ func Parse(path string) ParseResult {
 
 		result.Artist = strings.TrimSpace(artist)
 		result.Title = strings.TrimSpace(title)
-		result.Confidence = scoreConfidence(result)
+		result.Confidence = ScoreConfidence(result)
 	} else {
 		// No separator found — check if it's a platform-style hyphenated name
 		wasHyphenatedName := isAllLowerHyphenated(strings.TrimSpace(name))
@@ -174,8 +174,8 @@ func Parse(path string) ParseResult {
 	}
 
 	// Step 12: Apply title case to all-lowercase or ALL-CAPS names
-	result.Artist = titleCase(result.Artist)
-	result.Title = titleCase(result.Title)
+	result.Artist = TitleCase(result.Artist)
+	result.Title = TitleCase(result.Title)
 
 	// Final cleanup: trim any stray garbage from edges + orphan dashes
 	result.Artist = trimGarbageEdges(result.Artist)
@@ -589,7 +589,7 @@ var abbreviations = map[string]bool{
 // Each word is checked independently: all-lower or ALL-CAPS words get title-cased,
 // known abbreviations (DJ, NF, MC, etc.) are kept ALL-CAPS,
 // mixed-case words (e.g. "McDonald") are left as-is.
-func titleCase(s string) string {
+func TitleCase(s string) string {
 	words := strings.Fields(s)
 	for i, w := range words {
 		r := []rune(w)
@@ -612,7 +612,7 @@ func titleCase(s string) string {
 	return strings.Join(words, " ")
 }
 
-func scoreConfidence(r ParseResult) Confidence {
+func ScoreConfidence(r ParseResult) Confidence {
 	if r.Artist == "" || r.Title == "" {
 		return Low
 	}

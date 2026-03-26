@@ -7,22 +7,20 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 )
 
-func showConfirmDialog(pending []PendingFile) []ManualEntry {
+// showModeChooser opens a small dialog letting the user pick between
+// "Open in AudioInk" (returns 1) and "Auto-fix" (returns 2).
+// Returns 0 if the window was closed without choosing.
+func showModeChooser(fileCount int) int {
 	app := NewApp()
-	app.confirmMode = true
-	app.pendingFiles = pending
-	app.confirmResults = make([]ManualEntry, len(pending))
-	app.confirmDone = make(chan struct{})
-	for i := range app.confirmResults {
-		app.confirmResults[i] = ManualEntry{Skipped: true}
-	}
+	app.chooserMode = true
+	app.chooserFileCount = fileCount
 
 	err := wails.Run(&options.App{
 		Title:         "AudioInk",
-		Width:         460,
-		Height:        440,
-		MinWidth:      460,
-		MinHeight:     440,
+		Width:         340,
+		Height:        240,
+		MinWidth:      340,
+		MinHeight:     240,
 		DisableResize: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
@@ -36,8 +34,8 @@ func showConfirmDialog(pending []PendingFile) []ManualEntry {
 		},
 	})
 	if err != nil {
-		logger.Printf("confirm dialog error: %v", err)
+		logger.Printf("mode chooser error: %v", err)
 	}
 
-	return app.confirmResults
+	return app.chooserChoice
 }

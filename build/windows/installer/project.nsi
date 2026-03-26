@@ -49,27 +49,73 @@ VIAddVersionKey "ProductName"     "${INFO_PRODUCTNAME}"
 ManifestDPIAware true
 
 !include "MUI.nsh"
+!include "nsDialogs.nsh"
+!include "LogicLib.nsh"
 
 !define MUI_ICON "..\icon.ico"
 !define MUI_UNICON "..\icon.ico"
-# !define MUI_WELCOMEFINISHPAGE_BITMAP "resources\leftimage.bmp" #Include this to add a bitmap on the left side of the Welcome Page. Must be a size of 164x314
-!define MUI_FINISHPAGE_NOAUTOCLOSE # Wait on the INSTFILES page so the user can take a look into the details of the installation steps
-!define MUI_ABORTWARNING # This will warn the user if they exit from the installer.
+!define MUI_FINISHPAGE_NOAUTOCLOSE
+!define MUI_ABORTWARNING
 
-!insertmacro MUI_PAGE_WELCOME # Welcome to the installer page.
-# !insertmacro MUI_PAGE_LICENSE "resources\eula.txt" # Adds a EULA page to the installer
-!insertmacro MUI_PAGE_DIRECTORY # In which folder install page.
-!insertmacro MUI_PAGE_INSTFILES # Installing page.
-!insertmacro MUI_PAGE_FINISH # Finished installation page.
+# Custom reinstall check page (before Welcome) — uses English buttons via MUI
+Page custom reinstallCheckPage reinstallCheckLeave
 
-!insertmacro MUI_UNPAGE_INSTFILES # Uinstalling page
+!insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_DIRECTORY
+!insertmacro MUI_PAGE_INSTFILES
+!insertmacro MUI_PAGE_FINISH
 
-!insertmacro MUI_LANGUAGE "English" # Set the Language of the installer
+!insertmacro MUI_UNPAGE_INSTFILES
+
+!insertmacro MUI_LANGUAGE "English"
+
+Var ReinstallRadio
+Var UninstallRadio
+Var UninstStr
+
+Function reinstallCheckPage
+    SetRegView 64
+    ReadRegStr $UninstStr HKLM "${UNINST_KEY}" "UninstallString"
+    ${If} $UninstStr == ""
+        Abort ; not installed — skip this page
+    ${EndIf}
+
+    nsDialogs::Create 1018
+    Pop $0
+    ${If} $0 == error
+        Abort
+    ${EndIf}
+
+    ${NSD_CreateLabel} 0 0 100% 30u "AudioInk is already installed. Choose an action and click Next:"
+    Pop $0
+
+    ${NSD_CreateRadioButton} 20u 40u -20u 15u "Reinstall (remove old version, install new)"
+    Pop $ReinstallRadio
+    ${NSD_SetState} $ReinstallRadio ${BST_CHECKED}
+
+    ${NSD_CreateRadioButton} 20u 60u -20u 15u "Uninstall only"
+    Pop $UninstallRadio
+
+    nsDialogs::Show
+FunctionEnd
+
+Function reinstallCheckLeave
+    ${NSD_GetState} $ReinstallRadio $0
+    ${If} $0 == ${BST_CHECKED}
+        ; Reinstall: silently remove old, continue install
+        ExecWait '$UninstStr /S'
+    ${Else}
+        ; Uninstall only: run uninstaller with UI, then abort
+        ExecWait $UninstStr
+        Abort
+    ${EndIf}
+FunctionEnd
 
 # Macro to register context menu for one audio extension
 !macro RegisterContextMenu EXT
     WriteRegStr HKCR "SystemFileAssociations\${EXT}\shell\AudioInk" "" "AudioInk: Fix name && tags"
     WriteRegStr HKCR "SystemFileAssociations\${EXT}\shell\AudioInk" "Icon" "$INSTDIR\icon.ico"
+    WriteRegStr HKCR "SystemFileAssociations\${EXT}\shell\AudioInk" "MultiSelectModel" "Player"
     WriteRegStr HKCR "SystemFileAssociations\${EXT}\shell\AudioInk\command" "" '"$INSTDIR\${PRODUCT_EXECUTABLE}" --fix "%1"'
 !macroend
 
@@ -95,28 +141,6 @@ Function .onInit
 
    # Must match the 64-bit registry view used by wails.writeUninstaller
    SetRegView 64
-
-   # Check if AudioInk is already installed
-   ReadRegStr $0 HKLM "${UNINST_KEY}" "UninstallString"
-   StrCmp $0 "" done_check
-
-   MessageBox MB_YESNOCANCEL|MB_ICONQUESTION \
-       "AudioInk is already installed.$\n$\nYes = Reinstall (remove old, install new)$\nNo = Uninstall only$\nCancel = Abort" \
-       IDYES do_reinstall IDNO do_uninstall
-
-   # Cancel
-   Abort
-
-   do_uninstall:
-       # Run uninstaller and wait, then abort installer
-       ExecWait $0
-       Abort
-
-   do_reinstall:
-       # Run uninstaller silently, then continue with install
-       ExecWait '$0 /S'
-
-   done_check:
 FunctionEnd
 
 Section

@@ -19,8 +19,9 @@ func Read(path string) (Tags, error) {
 		return Tags{}, fmt.Errorf("read tags %s: %w", path, err)
 	}
 
+
 	track := 0
-	if v, ok := props["tracknumber"]; ok && len(v) > 0 {
+	if v, ok := props[taglib.TrackNumber]; ok && len(v) > 0 {
 		for _, c := range v[0] {
 			if c >= '0' && c <= '9' {
 				track = track*10 + int(c-'0')
@@ -31,9 +32,9 @@ func Read(path string) (Tags, error) {
 	}
 
 	return Tags{
-		Artist: first(props["artist"]),
-		Title:  first(props["title"]),
-		Album:  first(props["album"]),
+		Artist: first(props[taglib.Artist]),
+		Title:  first(props[taglib.Title]),
+		Album:  first(props[taglib.Album]),
 		Track:  track,
 	}, nil
 }
@@ -41,16 +42,16 @@ func Read(path string) (Tags, error) {
 func Write(path string, tags Tags) error {
 	props := make(map[string][]string)
 	if tags.Artist != "" {
-		props["artist"] = []string{tags.Artist}
+		props[taglib.Artist] = []string{tags.Artist}
 	}
 	if tags.Title != "" {
-		props["title"] = []string{tags.Title}
+		props[taglib.Title] = []string{tags.Title}
 	}
 	if tags.Album != "" {
-		props["album"] = []string{tags.Album}
+		props[taglib.Album] = []string{tags.Album}
 	}
 	if tags.Track > 0 {
-		props["tracknumber"] = []string{fmt.Sprintf("%d", tags.Track)}
+		props[taglib.TrackNumber] = []string{fmt.Sprintf("%d", tags.Track)}
 	}
 
 	if err := taglib.WriteTags(path, props, 0); err != nil {

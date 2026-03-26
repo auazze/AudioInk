@@ -8,14 +8,14 @@ import (
 )
 
 func TestRunFix_NoArgs(t *testing.T) {
-	code := runFix(nil)
+	code := fixPaths(nil, false)
 	if code != 1 {
-		t.Errorf("runFix(nil) = %d, want 1", code)
+		t.Errorf("fixPaths(nil, false) = %d, want 1", code)
 	}
 
-	code = runFix([]string{})
+	code = fixPaths([]string{}, false)
 	if code != 1 {
-		t.Errorf("runFix([]) = %d, want 1", code)
+		t.Errorf("fixPaths([]) = %d, want 1", code)
 	}
 }
 
@@ -25,9 +25,9 @@ func TestRunFix_UnsupportedExtensions(t *testing.T) {
 		"/some/path/image.png",
 		"/some/path/document.pdf",
 	}
-	code := runFix(paths)
+	code := fixPaths(paths, false)
 	if code != 1 {
-		t.Errorf("runFix(unsupported) = %d, want 1", code)
+		t.Errorf("fixPaths(unsupported) = %d, want 1", code)
 	}
 }
 
@@ -38,7 +38,7 @@ func TestFixOneFile_NonexistentFile(t *testing.T) {
 		title:    "Title",
 		filename: "Artist - Title.mp3",
 	}
-	err := fixOneFile(pf)
+	_, err := fixOneFile(pf)
 	if err == nil {
 		t.Fatal("fixOneFile on nonexistent file should return an error")
 	}
@@ -62,7 +62,7 @@ func TestFixOneFile_EmptyFileNoRename(t *testing.T) {
 		title:    "Title",
 		filename: "Artist - Title.mp3",
 	}
-	_ = fixOneFile(pf)
+	_, _ = fixOneFile(pf)
 }
 
 func TestRunFix_AllFilesFail(t *testing.T) {
@@ -78,7 +78,7 @@ func TestRunFix_AllFilesFail(t *testing.T) {
 		}
 	}
 
-	code := runFix(files)
+	code := fixPaths(files, false)
 	if code != 1 {
 		t.Errorf("runFix (all files fail) = %d, want 1", code)
 	}
@@ -99,7 +99,7 @@ func TestRunFix_MixedSupportedUnsupported(t *testing.T) {
 	}
 
 	// Should not crash; txt file should be filtered out
-	_ = runFix([]string{txtFile, mp3File})
+	_ = fixPaths([]string{txtFile, mp3File}, false)
 
 	// The txt file should still exist untouched (not processed)
 	data, err := os.ReadFile(txtFile)

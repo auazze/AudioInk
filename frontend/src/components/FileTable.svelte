@@ -4,6 +4,8 @@
 
     export let files = [];
     export let showStatus = false;
+    export let pendingArtist = '';
+    export let pendingTitle = '';
 
     const dispatch = createEventDispatcher();
 
@@ -24,7 +26,7 @@
         </thead>
         <tbody>
             {#each files as file, i (file.filePath)}
-                <EditRow {file} index={i} {showStatus} on:update={handleUpdate} />
+                <EditRow {file} index={i} {showStatus} {pendingArtist} {pendingTitle} on:update={handleUpdate} />
             {/each}
         </tbody>
     </table>

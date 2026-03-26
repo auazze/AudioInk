@@ -16,19 +16,36 @@ var assets embed.FS
 func main() {
 	// CLI mode: audioink --fix file1.mp3 file2.flac ...
 	if len(os.Args) > 1 && os.Args[1] == "--fix" {
-		os.Exit(runFix(os.Args[2:]))
+		paths := collectFixPaths(os.Args[2:])
+		if paths == nil {
+			return // follower or error
+		}
+
+		choice := showModeChooser(len(paths))
+		switch choice {
+		case 1: // Open in AudioInk GUI
+			launchGUI(paths)
+		case 2: // Auto-fix
+			os.Exit(fixPaths(paths, true))
+		}
+		return
 	}
 
+	launchGUI(nil)
+}
+
+func launchGUI(initialPaths []string) {
 	app := NewApp()
+	app.initialPaths = initialPaths
 
 	err := wails.Run(&options.App{
-		Title:            "AudioInk",
-		Width:            1100,
-		Height:           650,
-		MinWidth:         600,
-		MinHeight:        400,
-		DisableResize:    false,
-		Frameless:        false,
+		Title:         "AudioInk",
+		Width:         1100,
+		Height:        650,
+		MinWidth:      600,
+		MinHeight:     400,
+		DisableResize: false,
+		Frameless:     false,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},

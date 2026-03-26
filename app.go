@@ -36,17 +36,25 @@ func initLogger() {
 }
 
 type PendingFile struct {
-	Filename string `json:"filename"`
-	Artist   string `json:"artist"`
-	Title    string `json:"title"`
+	Filename   string `json:"filename"`
+	Artist     string `json:"artist"`
+	Title      string `json:"title"`
+	MetaArtist string `json:"metaArtist"`
+	MetaTitle  string `json:"metaTitle"`
+	FileArtist string `json:"fileArtist"`
+	FileTitle  string `json:"fileTitle"`
 }
 
 type App struct {
-	ctx            context.Context
-	confirmMode    bool
-	pendingFiles   []PendingFile
-	confirmResults []ManualEntry
-	confirmDone    chan struct{}
+	ctx              context.Context
+	confirmMode      bool
+	chooserMode      bool
+	chooserFileCount int
+	chooserChoice    int // 0=none, 1=gui, 2=autofix
+	pendingFiles     []PendingFile
+	confirmResults   []ManualEntry
+	confirmDone      chan struct{}
+	initialPaths     []string
 }
 
 func NewApp() *App {
@@ -81,6 +89,46 @@ func (a *App) ConfirmDone() {
 	runtime.Quit(a.ctx)
 }
 
+// ConfirmBatchFromTags applies metadata to all pending files from fromIndex onward.
+// useArtist/useTitle control which fields are taken from metadata (vs. parsed filename).
+func (a *App) ConfirmBatchFromTags(fromIndex int, useArtist, useTitle bool) {
+	for i := fromIndex; i < len(a.pendingFiles); i++ {
+		pf := a.pendingFiles[i]
+		artist := pf.Artist
+		title := pf.Title
+
+		if useArtist && pf.MetaArtist != "" {
+			artist = pf.MetaArtist
+		}
+		if useTitle && pf.MetaTitle != "" {
+			title = pf.MetaTitle
+		}
+
+		if artist == "" && title == "" {
+			a.confirmResults[i] = ManualEntry{Skipped: true}
+		} else {
+			a.confirmResults[i] = ManualEntry{Artist: artist, Title: title}
+		}
+	}
+}
+
+// --- Mode chooser methods (context menu → choose GUI or auto-fix) ---
+
+func (a *App) IsChooserMode() bool       { return a.chooserMode }
+func (a *App) GetChooserFileCount() int   { return a.chooserFileCount }
+func (a *App) ChooseGUI()                 { a.chooserChoice = 1; runtime.Quit(a.ctx) }
+func (a *App) ChooseAutoFix()             { a.chooserChoice = 2; runtime.Quit(a.ctx) }
+
+// --- Initial files (context menu → "Open in GUI") ---
+
+func (a *App) GetInitialFiles() []FileResult {
+	if len(a.initialPaths) == 0 {
+		return nil
+	}
+	logger.Printf("loading %d initial files from context menu", len(a.initialPaths))
+	return a.processFiles(a.initialPaths)
+}
+
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	logger.Println("app startup complete")
@@ -98,6 +146,8 @@ type FileResult struct {
 	CurrentArtist   string   `json:"currentArtist"`
 	CurrentTitle    string   `json:"currentTitle"`
 	NewFilename     string   `json:"newFilename"`
+	CleanMetaArtist string   `json:"cleanMetaArtist"`
+	CleanMetaTitle  string   `json:"cleanMetaTitle"`
 }
 
 func buildNewFilename(artist, title, extras, ext string) string {
@@ -131,10 +181,22 @@ func sanitizeFilename(name string) string {
 
 func toFileResult(pr parser.ParseResult) FileResult {
 	existing, err := tagger.Read(pr.FilePath)
+
+	var cleanMetaArtist, cleanMetaTitle string
 	if err != nil {
 		logger.Printf("  read tags error for %s: %v", pr.Filename, err)
 	} else {
 		logger.Printf("  existing tags: artist=%q title=%q", existing.Artist, existing.Title)
+
+		// Clean metadata for UI display / buttons (no auto-apply — user decides)
+		cleanA, cleanT, metaFeat, _ := parser.CleanMetadata(existing.Artist, existing.Title)
+		metaAll := []string{}
+		if cleanA != "" {
+			metaAll = append(metaAll, cleanA)
+		}
+		metaAll = append(metaAll, metaFeat...)
+		cleanMetaArtist = strings.Join(metaAll, " & ")
+		cleanMetaTitle = cleanT
 	}
 
 	allArtists := []string{}
@@ -146,6 +208,14 @@ func toFileResult(pr parser.ParseResult) FileResult {
 
 	title := pr.Title
 	extras := pr.Extras
+
+	// Prefer metadata casing when content matches (metadata is more authoritative)
+	if cleanMetaArtist != "" && strings.EqualFold(artist, cleanMetaArtist) {
+		artist = cleanMetaArtist
+	}
+	if cleanMetaTitle != "" && strings.EqualFold(title, cleanMetaTitle) {
+		title = cleanMetaTitle
+	}
 
 	ext := filepath.Ext(pr.Filename)
 	newFilename := buildNewFilename(artist, title, extras, ext)
@@ -165,6 +235,8 @@ func toFileResult(pr parser.ParseResult) FileResult {
 		CurrentArtist:   existing.Artist,
 		CurrentTitle:    existing.Title,
 		NewFilename:     newFilename,
+		CleanMetaArtist: cleanMetaArtist,
+		CleanMetaTitle:  cleanMetaTitle,
 	}
 }
 
@@ -311,11 +383,15 @@ func (a *App) ApplyQuick(filePath, artist, title, extras string) ApplyResult {
 
 func (a *App) processApply(requests []ApplyRequest, outputDir string, overwrite bool) []ApplyResult {
 	results := make([]ApplyResult, 0, len(requests))
+	var historyEntries []HistoryEntry
 
 	for _, req := range requests {
 		logger.Printf("processing: %s", filepath.Base(req.FilePath))
 		logger.Printf("  artist=%q title=%q extras=%q track=%d overwrite=%v",
 			req.Artist, req.Title, req.Extras, req.Track, overwrite)
+
+		// Read original tags for undo history
+		origTags, _ := tagger.Read(req.FilePath)
 
 		ext := filepath.Ext(req.FilePath)
 		newFilename := buildNewFilename(req.Artist, req.Title, req.Extras, ext)
@@ -373,6 +449,12 @@ func (a *App) processApply(requests []ApplyRequest, outputDir string, overwrite 
 				logger.Printf("  OK (overwrite): %s", filepath.Base(destPath))
 			}
 
+			historyEntries = append(historyEntries, HistoryEntry{
+				OriginalPath: req.FilePath,
+				NewPath:      destPath,
+				OriginalTags: origTags,
+				NewTags:      tags,
+			})
 			results = append(results, ApplyResult{
 				FilePath:    req.FilePath,
 				NewPath:     destPath,
@@ -406,6 +488,12 @@ func (a *App) processApply(requests []ApplyRequest, outputDir string, overwrite 
 			}
 
 			logger.Printf("  OK (copy): %s", filepath.Base(destPath))
+			historyEntries = append(historyEntries, HistoryEntry{
+				OriginalPath: req.FilePath,
+				NewPath:      destPath,
+				OriginalTags: origTags,
+				NewTags:      tags,
+			})
 			results = append(results, ApplyResult{
 				FilePath:    req.FilePath,
 				NewPath:     destPath,
@@ -415,6 +503,13 @@ func (a *App) processApply(requests []ApplyRequest, outputDir string, overwrite 
 		}
 	}
 
+	// Record history for undo
+	mode := "gui-copy"
+	if overwrite {
+		mode = "gui-overwrite"
+	}
+	recordBatch(mode, historyEntries)
+
 	successCount := 0
 	for _, r := range results {
 		if r.Success {
@@ -423,6 +518,36 @@ func (a *App) processApply(requests []ApplyRequest, outputDir string, overwrite 
 	}
 	logger.Printf("=== Done: %d/%d successful ===", successCount, len(results))
 	return results
+}
+
+// UndoLast reverts the most recent batch. Returns original file paths for UI rescan.
+func (a *App) UndoLast() ([]string, error) {
+	logger.Println("=== UndoLast called ===")
+	paths, err := undoLastBatch()
+	if err != nil {
+		logger.Printf("undo error: %v", err)
+		return nil, err
+	}
+	logger.Printf("undo complete: %d files reverted", len(paths))
+	return paths, nil
+}
+
+// RedoLast re-applies the most recently undone batch. Returns new file paths for UI rescan.
+func (a *App) RedoLast() ([]string, error) {
+	logger.Println("=== RedoLast called ===")
+	paths, err := redoLastBatch()
+	if err != nil {
+		logger.Printf("redo error: %v", err)
+		return nil, err
+	}
+	logger.Printf("redo complete: %d files reapplied", len(paths))
+	return paths, nil
+}
+
+// GetHistoryBatches returns recent history for display.
+func (a *App) GetHistoryBatches() []HistoryBatch {
+	h := loadHistory()
+	return h.Batches
 }
 
 func (a *App) OpenOutputFolder(sourcePath string) {
