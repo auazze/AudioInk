@@ -166,15 +166,24 @@ func fixPaths(paths []string, autoFix bool) int {
 
 		needsManual := pr.Confidence == parser.Low
 
-		if autoFix && metaArtist != "" && metaTitle != "" {
-			useArtist = metaArtist // as-is from metadata
-			useTitle = metaTitle   // as-is; TitleCase already applied by parser if from filename
-			// Only title-case if the metadata title is ALL CAPS or all lowercase
-			if metaTitle == strings.ToLower(metaTitle) || metaTitle == strings.ToUpper(metaTitle) {
-				useTitle = parser.TitleCase(metaTitle)
+		if autoFix {
+			// Trust filename parsing. Only fall back to tags when filename has no artist.
+			// Respect low confidence — still show confirm dialog for heuristic splits.
+			if useArtist != "" && pr.Confidence != parser.Low {
+				// Filename had a real artist with decent confidence — use it
+				needsManual = false
+			} else if metaArtist != "" && metaTitle != "" {
+				// Filename had no artist but tags exist — use tags as fallback
+				useArtist = metaArtist
+				useTitle = metaTitle
+				if metaTitle == strings.ToLower(metaTitle) || metaTitle == strings.ToUpper(metaTitle) {
+					useTitle = parser.TitleCase(metaTitle)
+				}
+				needsManual = false
 			}
-			needsManual = false
-			logger.Printf("  auto-fix: %s → %q - %q", filepath.Base(f), useArtist, useTitle)
+			if !needsManual {
+				logger.Printf("  auto-fix: %s → %q - %q", filepath.Base(f), useArtist, useTitle)
+			}
 		}
 
 		pf := parsedFile{
@@ -266,6 +275,10 @@ func fixOneFile(pf parsedFile) (HistoryEntry, error) {
 
 	// Read original tags for undo history
 	origTags, _ := tagger.Read(pf.filePath)
+
+	// Deduplicate extras and strip from title to prevent accumulation
+	pf.extras = deduplicateExtras(pf.extras)
+	pf.title = stripExtrasFromTitle(pf.title, pf.extras)
 
 	tagTitle := pf.title
 	if pf.extras != "" {

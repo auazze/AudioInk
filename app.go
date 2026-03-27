@@ -384,9 +384,16 @@ func (a *App) ApplyQuick(filePath, artist, title, extras string) ApplyResult {
 func (a *App) processApply(requests []ApplyRequest, outputDir string, overwrite bool) []ApplyResult {
 	results := make([]ApplyResult, 0, len(requests))
 	var historyEntries []HistoryEntry
+	claimed := make(map[string]bool) // track paths claimed within this batch
+	freed := make(map[string]bool)   // track source paths freed by renames
 
 	for _, req := range requests {
 		logger.Printf("processing: %s", filepath.Base(req.FilePath))
+
+		// Deduplicate extras and strip from title to prevent accumulation
+		req.Extras = deduplicateExtras(req.Extras)
+		req.Title = stripExtrasFromTitle(req.Title, req.Extras)
+
 		logger.Printf("  artist=%q title=%q extras=%q track=%d overwrite=%v",
 			req.Artist, req.Title, req.Extras, req.Track, overwrite)
 
@@ -410,6 +417,15 @@ func (a *App) processApply(requests []ApplyRequest, outputDir string, overwrite 
 		}
 
 		if overwrite {
+			// Verify file still exists (may have been renamed by earlier ApplyQuick)
+			if _, err := os.Stat(req.FilePath); os.IsNotExist(err) {
+				logger.Printf("  SKIP: file no longer exists (already renamed?)")
+				results = append(results, ApplyResult{
+					FilePath: req.FilePath, Error: "file no longer exists",
+				})
+				continue
+			}
+
 			// Write tags on the original
 			if err := tagger.Write(req.FilePath, tags); err != nil {
 				logger.Printf("  TAG WRITE ERROR: %v", err)
@@ -421,6 +437,7 @@ func (a *App) processApply(requests []ApplyRequest, outputDir string, overwrite 
 
 			// Rename the original
 			destPath := filepath.Join(filepath.Dir(req.FilePath), newFilename)
+
 			if destPath == req.FilePath {
 				logger.Printf("  OK (overwrite, same name): %s", newFilename)
 			} else if pathsEqual(destPath, req.FilePath) {
@@ -434,9 +451,10 @@ func (a *App) processApply(requests []ApplyRequest, outputDir string, overwrite 
 					})
 					continue
 				}
+				freed[strings.ToLower(req.FilePath)] = true
 				logger.Printf("  OK (overwrite, case fix): %s", filepath.Base(destPath))
 			} else {
-				destPath = uniquePath(destPath)
+				destPath = uniquePathWithClaimed(destPath, claimed, freed)
 				if err := os.Rename(req.FilePath, destPath); err != nil {
 					logger.Printf("  RENAME ERROR: %v", err)
 					results = append(results, ApplyResult{
@@ -446,8 +464,10 @@ func (a *App) processApply(requests []ApplyRequest, outputDir string, overwrite 
 					})
 					continue
 				}
+				freed[strings.ToLower(req.FilePath)] = true
 				logger.Printf("  OK (overwrite): %s", filepath.Base(destPath))
 			}
+			claimed[strings.ToLower(destPath)] = true
 
 			historyEntries = append(historyEntries, HistoryEntry{
 				OriginalPath: req.FilePath,
@@ -464,7 +484,8 @@ func (a *App) processApply(requests []ApplyRequest, outputDir string, overwrite 
 		} else {
 			// Copy mode
 			destPath := filepath.Join(outputDir, newFilename)
-			destPath = uniquePath(destPath)
+			destPath = uniquePathWithClaimed(destPath, claimed, nil)
+			claimed[strings.ToLower(destPath)] = true
 
 			logger.Printf("  copying to: %s", destPath)
 
@@ -598,16 +619,65 @@ func pathsEqual(a, b string) bool {
 }
 
 func uniquePath(path string) string {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+	return uniquePathWithClaimed(path, nil, nil)
+}
+
+func uniquePathWithClaimed(path string, claimed map[string]bool, freed map[string]bool) string {
+	isClaimed := func(p string) bool {
+		key := strings.ToLower(p)
+		if freed != nil && freed[key] {
+			return false // explicitly freed by rename in this batch
+		}
+		if claimed != nil && claimed[key] {
+			return true
+		}
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			return true
+		}
+		return false
+	}
+
+	if !isClaimed(path) {
 		return path
 	}
 	ext := filepath.Ext(path)
 	base := strings.TrimSuffix(path, ext)
 	for i := 2; i < 1000; i++ {
 		candidate := fmt.Sprintf("%s (%d)%s", base, i, ext)
-		if _, err := os.Stat(candidate); os.IsNotExist(err) {
+		if !isClaimed(candidate) {
 			return candidate
 		}
 	}
 	return path
+}
+
+// stripExtrasFromTitle removes "(extras)" suffix from a title to prevent duplication
+// when extras are appended separately. Case-insensitive to catch mixed-case edits.
+func stripExtrasFromTitle(title, extras string) string {
+	if extras == "" || title == "" {
+		return title
+	}
+	suffix := " (" + extras + ")"
+	for len(title) >= len(suffix) && strings.EqualFold(title[len(title)-len(suffix):], suffix) {
+		title = strings.TrimSpace(title[:len(title)-len(suffix)])
+	}
+	return title
+}
+
+// deduplicateExtras removes duplicate comma-separated entries in extras.
+func deduplicateExtras(extras string) string {
+	if extras == "" {
+		return ""
+	}
+	parts := strings.Split(extras, ", ")
+	seen := make(map[string]bool)
+	var unique []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" && !seen[p] {
+			seen[p] = true
+			unique = append(unique, p)
+		}
+	}
+	return strings.Join(unique, ", ")
 }
