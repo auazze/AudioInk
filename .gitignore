@@ -1,4 +1,9 @@
-build/bin/
+build/bin/*
+!build/bin/AudioInk-amd64-installer.exe
+.claude/
+docs/
+build/README.md
+frontend/README.md
 build/windows/installer/tmp/
 frontend/dist/
 frontend/node_modules/
