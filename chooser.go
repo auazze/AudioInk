@@ -18,9 +18,9 @@ func showModeChooser(fileCount int) int {
 	err := wails.Run(&options.App{
 		Title:         "AudioInk",
 		Width:         340,
-		Height:        240,
+		Height:        260,
 		MinWidth:      340,
-		MinHeight:     240,
+		MinHeight:     260,
 		DisableResize: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,

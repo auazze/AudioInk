@@ -33,10 +33,13 @@
         align-items: center;
         justify-content: center;
         background: var(--bg);
+        padding: 24px;
+        box-sizing: border-box;
     }
 
     .chooser-card {
-        width: 290px;
+        width: 100%;
+        max-width: 290px;
         display: flex;
         flex-direction: column;
         gap: 10px;
@@ -50,12 +53,15 @@
         background: linear-gradient(135deg, var(--accent), #a78bfa);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
+        margin: 0;
+        line-height: 1.2;
     }
 
     .chooser-count {
         font-size: 12px;
         color: var(--text-dim);
-        margin-bottom: 4px;
+        margin: 0 0 6px;
+        line-height: 1.2;
     }
 
     .chooser-btn {

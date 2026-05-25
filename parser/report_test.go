@@ -248,6 +248,512 @@ func TestGenerateReport(t *testing.T) {
 		"Ed Sheeran - Shape of You (Official Audio).mp3",
 		"Billie Eilish - Bad Guy (Remix) (Free Download).mp3",
 		"The Weeknd + Daft Punk - Starboy (HQ).mp3",
+
+		// === REAL BAND NAMES WITH TRICKY CHARS ===
+		"AC/DC - Highway to Hell.mp3",
+		"blink-182 - All The Small Things.mp3",
+		"!!! - Me And Giuliani Down By The School Yard.mp3",
+		"$uicideboy$ - Kill Yourself.mp3",
+		"Mötley Crüe - Kickstart My Heart.mp3",
+		"Bjørn Solo - Album Track.mp3",
+		"Sigur Rós - Hoppípolla.mp3",
+		"Beyoncé - Halo.mp3",
+		"Mø - Final Song.mp3",
+		"P!nk - So What.mp3",
+		"Ke$ha - Tik Tok.mp3",
+		"A$AP Rocky - Praise The Lord.mp3",
+		"DJ E-Z Rock - It Takes Two.mp3",
+		"will.i.am - Scream & Shout.mp3",
+		"M.I.A. - Paper Planes.mp3",
+		"Run-D.M.C. - It's Tricky.mp3",
+		"P.O.D. - Alive.mp3",
+		"+44 - When Your Heart Stops Beating.mp3",
+		"3 Doors Down - Kryptonite.mp3",
+		"50 Cent - In Da Club.mp3",
+		"24kGoldn - Mood.mp3",
+		"U2 - One.mp3",
+		"Sum 41 - Fat Lip.mp3",
+		"Maroon 5 - Sugar.mp3",
+		"Matchbox 20 - Push.mp3",
+
+		// === NUMBERS IN TITLES (NOT TRACK NUMBERS!) ===
+		"Bowling for Soup - 1985.mp3",
+		"Prince - 1999.mp3",
+		"Adele - 19.mp3",
+		"Adele - 21.mp3",
+		"Beach Boys - 409.mp3",
+		"Drake - 0 To 100.mp3",
+		"The Beatles - 1.mp3",
+
+		// === HIP-HOP COMPLEX FEAT CHAINS ===
+		"DJ Khaled feat. Drake, Lil Wayne, Big Sean - Lavish.mp3",
+		"Eminem ft. Dido - Stan.mp3",
+		"Kendrick Lamar feat. SZA - All The Stars.mp3",
+		"Post Malone & Swae Lee - Sunflower.mp3",
+		"21 Savage x Metro Boomin - Mr. Right Now.mp3",
+		"Future, Metro Boomin - Like That.mp3",
+		"Migos - Bad And Boujee (feat. Lil Uzi Vert).mp3",
+		"Tyler, The Creator - EARFQUAKE.mp3",
+
+		// === FEATURING VARIANT KEYWORDS ===
+		"Artist x B - Song.mp3",
+		"Artist X B - Song.mp3",
+		"Artist X B X C - Song.mp3",
+		"Artist with B - Song.mp3",
+		"Artist presents B - Song.mp3",
+		"Artist pres. B - Song.mp3",
+		"Artist vs Artist2 - Battle.mp3",
+		"Artist VS Artist2 - Battle.mp3",
+		"Artist VS. Artist2 - Battle.mp3",
+		"Artist + B & C - Song.mp3",
+
+		// === SUBTITLE / MULTIPLE DASHES IN TITLE ===
+		"Pink Floyd - Wish You Were Here - Live At Wembley.mp3",
+		"Bach - Symphony No. 5 in C Minor - I. Allegro.mp3",
+		"Mozart - Sonata K. 545 - II. Andante.mp3",
+		"Artist - Title - Album Version.mp3",
+		"Artist - Title - Single Edit.mp3",
+		"Beethoven - Symphony No. 9 - IV. Ode to Joy.mp3",
+
+		// === COMPILATION / DISC / TRACK FORMATS ===
+		"VA - Best of 2023 - 01 - Artist - Song.mp3",
+		"Various Artists - Now Vol. 50 - 03 - Artist - Title.mp3",
+		"Disc 1 - 01 - Artist - Title.mp3",
+		"CD1 - 03 - Artist - Title.mp3",
+		"Disc 2 Track 05 - Artist - Title.mp3",
+		"1-01 Artist - Title.mp3",
+		"1.01 Artist - Title.mp3",
+		"The Beatles - 1.01 - Love Me Do.mp3",
+
+		// === STREAMING PLATFORM CONVENTIONS ===
+		"y2mate.com - Artist - Title.mp3",
+		"[Spotify] Artist - Title.mp3",
+		"Artist - Title (Original Mix).mp3",
+		"Artist - Title (Club Mix).mp3",
+		"Artist - Title (Dub Mix).mp3",
+		"Artist - Title (Edit).mp3",
+		"Artist - Title (Single Version).mp3",
+		"Artist - Title - YouTube.mp3",
+
+		// === BRACKETS AT START ===
+		"(Bonus) Artist - Title.mp3",
+		"[Live] Artist - Title.mp3",
+		"[2023] Artist - Album - 01 Song.mp3",
+		"[HQ] Artist - Title.mp3",
+		"[Acoustic] Artist - Title.mp3",
+
+		// === APOSTROPHES / PUNCTUATION ===
+		"Guns N' Roses - Sweet Child O' Mine.mp3",
+		"Don't Stop Believin' - Journey.mp3",
+		"OutKast - Ms. Jackson.mp3",
+		"Mr. Bungle - Sweet Charity.mp3",
+		"Dr. Dre - Still D.R.E.mp3",
+		"Ms. Lauryn Hill - Doo Wop.mp3",
+		"Eminem - Without Me (Don't Try This At Home).mp3",
+		"Artist - It's Time.mp3",
+		"Artist - I'm The One Who Did It.mp3",
+
+		// === MIXED LANGUAGE / EMOJI / SPECIAL UNICODE ===
+		"BLACKPINK - 뚜두뚜두 (DDU-DU DDU-DU).mp3",
+		"NewJeans - OMG.mp3",
+		"米津玄師 - Lemon.mp3",
+		"YOASOBI - Idol.mp3",
+		"Drake - 🍑.mp3",
+		"Artist - Song 🔥.mp3",
+		"♥ Artist - Title ♥.mp3",
+		"Artist — Title (★ Remix ★).mp3",
+
+		// === REAL CLASSICAL NAMING ===
+		"Tchaikovsky - 1812 Overture, Op. 49.mp3",
+		"Beethoven - Piano Sonata No. 14 in C-sharp Minor, Op. 27 No. 2 'Moonlight'.mp3",
+		"Bach, J.S. - Toccata and Fugue in D Minor, BWV 565.mp3",
+		"Mozart - Requiem in D Minor, K. 626 - Lacrimosa.mp3",
+
+		// === EDGE: TRACK NUMBER VS YEAR VS BARE NUMBER ===
+		"1985 - Bowling for Soup.mp3",       // ambiguous: track 1985? or year?
+		"2001 - A Space Odyssey.mp3",
+		"99 - Toto - Africa.mp3",            // track 99
+		"100 - Artist - Title.mp3",          // 3-digit track
+		"01-02 - Artist - Title.mp3",        // disc-track format
+		"Artist - Track 03.mp3",             // bizarre track in title
+
+		// === BAD UTF-8 / WEIRD WHITESPACE ===
+		"Artist - Title.mp3",       // non-breaking space (U+00A0)
+		"Artist - Title.mp3",       // em space (U+2003)
+		"Artist​-Title.mp3",         // zero-width space (invisible!)
+		"Artist - Title​.mp3",       // trailing ZWSP in title
+
+		// === DOUBLE EXTENSIONS / WEIRD EXT CASING ===
+		"Artist - Title.mp3.mp3",   // accidental double extension
+		"Artist - Title.MP3",       // uppercase ext
+		"Artist - Title.Mp3",       // mixed case ext
+		"Artist - Title.flac.flac",
+
+		// === EXTREMELY LONG ===
+		"Artist - This Is A Really Really Really Really Really Really Long Title That Should Still Parse Fine Even If It Has Many Words.mp3",
+
+		// === ONE-CHAR NAMES ===
+		"X - Y.mp3",
+		"A - B.mp3",
+		"1 - 2.mp3",
+
+		// === PARENTHESES IN ARTIST ===
+		"Artist (Solo Project) - Title.mp3",
+		"The Band (UK) - Song.mp3",
+		"Twisted Sister (Live in NYC) - We're Not Gonna Take It.mp3",
+
+		// === KNOWN PARSER GOTCHAS (Picard/beets reported bugs) ===
+		"Artist AND B - Song.mp3",            // Picard crashes on uppercase AND
+		"Artist OR B - Song.mp3",
+		"UB40 - Red Red Wine.mp3",            // UB40 mistaken as track number by Picard
+		"S Club 7 - S Club Party.mp3",        // number-suffix band name
+		"Tha Eastsidaz feat. Snoop Dogg - G'd Up.mp3",
+		"4 Non Blondes - What's Up.mp3",
+		"3OH!3 - Don't Trust Me.mp3",
+
+		// === STREAMING / VIRAL CONVENTIONS (TikTok era) ===
+		"Artist - Title (Sped Up).mp3",
+		"Artist - Title (Slowed).mp3",
+		"Artist - Title (Slowed + Reverb).mp3",
+		"Artist - Title (Slowed Down).mp3",
+		"Artist - Title (Nightcore).mp3",
+		"Artist - Title (Tiktok Version).mp3",
+		"Artist - Title (TikTok Remix).mp3",
+		"Artist - Title (Phonk Remix).mp3",
+		"Artist - Title (Drift Phonk).mp3",
+		"Artist - Title (8D Audio).mp3",
+		"Artist - Title (Bass Boosted).mp3",
+		"Artist - Title (Earrape Edition).mp3",
+
+		// === SOUNDTRACK / OST CONVENTIONS ===
+		`Artist - Title (From "Movie Title").mp3`,
+		"Artist - Title [From The Motion Picture].mp3",
+		"Artist - Title (OST).mp3",
+		"Artist - Title - OST Inception.mp3",
+		"Hans Zimmer - Time (Inception OST).mp3",
+		"John Williams - Imperial March (Star Wars).mp3",
+		"Trent Reznor & Atticus Ross - The Social Network (OST) - 01 - Hand Covers Bruise.mp3",
+		"Various Artists - Pulp Fiction Soundtrack - 03 - Misirlou.mp3",
+
+		// === MULTI-DISC / DOUBLE ALBUM ===
+		"Artist - Album (Disc 2) - 03 - Title.mp3",
+		"Artist - Album [Disc 2] - 03 - Title.mp3",
+		"Artist - Album - CD2 - 03 - Title.mp3",
+		"Pink Floyd - The Wall - Disc 1 - Track 5 - Mother.mp3",
+		"D1 - 01 - Artist - Title.mp3",
+		"D2 - 11 - Artist - Title.mp3",
+
+		// === VINYL / CASSETTE NOTATION ===
+		"Artist - Title (Side A).mp3",
+		"Artist - Title (Side B).mp3",
+		"Artist - Title (A1).mp3",
+		"Artist - Title (B3).mp3",
+		"Side A - 01 - Artist - Title.mp3",
+		"Artist - Album - Side One - Track 4.mp3",
+
+		// === VERSION / TAKE / DEMO MARKERS ===
+		"Artist - Title (Demo).mp3",
+		"Artist - Title (Demo Version).mp3",
+		"Artist - Title (Take 1).mp3",
+		"Artist - Title (Take 47).mp3",
+		"Artist - Title (Alt. Version).mp3",
+		"Artist - Title (Alternate Take).mp3",
+		"Artist - Title v2.mp3",
+		"Artist - Title (v3).mp3",
+		"Artist - Title (Rough Mix).mp3",
+		"Artist - Title (Final Mix).mp3",
+		"Artist - Title (Promo).mp3",
+		"Artist - Title (Promo Single).mp3",
+		"Artist - Title (Test Pressing).mp3",
+
+		// === PART / CHAPTER / EPISODE ===
+		"Artist - Title Pt. 1.mp3",
+		"Artist - Title Pt. 2.mp3",
+		"Artist - Title (Part 1).mp3",
+		"Artist - Title - Part 2.mp3",
+		"Artist - Title (Chapter 3).mp3",
+
+		// === CLEAN / EXPLICIT / RADIO MARKERS ===
+		"Artist - Title (Clean).mp3",
+		"Artist - Title (Dirty).mp3",
+		"Artist - Title (Radio Version).mp3",
+		"Artist - Title (Censored).mp3",
+		"Artist - Title (Uncensored).mp3",
+		"Artist - Title (Explicit).mp3",
+
+		// === YEAR PREFIXES / GENRE PREFIXES ===
+		"(2023) Artist - Title.mp3",
+		"[2024] Artist - Title.mp3",
+		"[Hip-Hop] Artist - Title.mp3",
+		"[Rock] Artist - Title.mp3",
+		"[EDM] Artist - Title.mp3",
+		"[Dnb] Artist - Title.mp3",
+		"[Drum & Bass] Artist - Title.mp3",
+		"[Phonk] Artist - Title.mp3",
+
+		// === RUSSIAN / CIS TORRENT DUMP CONVENTIONS ===
+		"01-Артист-Название.mp3",
+		"Артист-Название (2023) [320 kbps]-01.mp3",
+		"[FLAC] Артист - Альбом - 01 - Название.flac",
+		"Артист - Альбом 2023 (Lossless).flac",
+		"01-artist-title-(remix)-(2023).mp3",
+		"Артист - Название [www.audio.ru].mp3",
+		"Артист - Название (Промо).mp3",
+		"Артист - Название (Сингл).mp3",
+		"Артист - Название (Минусовка).mp3",
+		"Артист - Название (Караоке).mp3",
+		"Артист - Название (Авторский трек).mp3",
+
+		// === DJ MIX SET TRACKS ===
+		"01 - Tiësto - In Search of Sunrise - 01 - Track Name.mp3",
+		"Tiësto @ Tomorrowland 2023 - 01 - Track.mp3",
+		"DJ Snake - Live at Coachella 2023 - 03 - Track.mp3",
+		"Above & Beyond - Group Therapy 500 - 01 - Track.mp3",
+
+		// === DJ TAG / PRODUCER TAG NOISE ===
+		"(DJ Snake Edit) Artist - Title.mp3",
+		"(Prod. by Metro Boomin) Artist - Title.mp3",
+		"Artist - Title (Prod. Murda Beatz).mp3",
+		"Artist - Title [Prod. Tay Keith].mp3",
+		"Artist - Title (Beat by Dr. Dre).mp3",
+
+		// === BEAT TAPE / TYPE BEAT CONVENTIONS ===
+		"[FREE] Drake Type Beat 2023 - 'Vibes'.mp3",
+		"Drake Type Beat - 'Vibes' (Prod. ProducerName).mp3",
+		"FREE Travis Scott Type Beat - 'Astro'.mp3",
+		"$AVE - SOLD - Drake Type Beat.mp3",
+
+		// === ARTIST NAME WITH NUMBERS / SYMBOLS REVISITED ===
+		"+44 - When Your Heart Stops Beating.mp3",
+		"!!! - Heart of Hearts.mp3",
+		"???? - Mystery Track.mp3",
+		"deadmau5 - Strobe.mp3",
+		"deadmau5 - I Remember.mp3",
+		"Skrillex - Bangarang feat. Sirah.mp3",
+		"Skrillex - Scary Monsters and Nice Sprites.mp3",
+		"$NOT - Gosha.mp3",
+		"Yung Lean - Yoshi City.mp3",
+		"Yung Gravy - Mr. Clean.mp3",
+		"j-hope - on the street.mp3",
+		"i-Ro - Title.mp3",
+
+		// === MIXTAPE PREFIXES ===
+		"[Mixtape] Artist - Title.mp3",
+		"[MIXTAPE 2023] Artist - Title.mp3",
+		"DJ Drama presents Lil Wayne - Dedication 5 - 03 - Title.mp3",
+
+		// === EDGE: WEIRD MIDDLE / TRAILING JUNK ===
+		"Artist - Title - 192kbps - downloaded from somewhere.mp3",
+		"Artist - Title - high quality - 320kbps.mp3",
+		"Artist - Title (no copyright music).mp3",
+		"Artist - Title [NoCopyrightSounds].mp3",
+		"Artist - Title [NCS Release].mp3",
+		"Artist - Title (Royalty Free).mp3",
+		"Artist - Title - YouTube to MP3 Converter.mp3",
+		"Artist - Title (Mp3-Tag-Removed).mp3",
+		"Artist - Title (track from album 'Album Name').mp3",
+		"Artist - Title (with Artist2).mp3",
+
+		// === BROKEN / NEARLY-BROKEN INPUTS ===
+		"Artist -.mp3",
+		"- Title.mp3",
+		"Artist -- Title.mp3",
+		" - .mp3",
+		".mp3",
+		"Artist (Title).mp3",
+		"Artist [Title].mp3",
+		"(Artist - Title).mp3",
+		"[Artist - Title].mp3",
+		"((Artist)) - ((Title)).mp3",
+
+		// === CYRILLIC EDGE CASES ===
+		"01. Виктор Цой - Группа крови.mp3",
+		"Цой - Перемен (feat. Кино).mp3",
+		"Земфира - Прости меня моя любовь (Live).mp3",
+		"Сплин - Романс (Acoustic).mp3",
+		"АукцЫон - Боги (Remix).mp3",
+		"Гражданская Оборона - Все идет по плану.mp3",
+		"Король и Шут - Кукла колдуна (Remastered 2020).flac",
+
+		// === ARTISTS WITH "THE" PREFIX ===
+		"The Beatles - Let It Be.mp3",
+		"The Rolling Stones - Paint It Black.mp3",
+		"The Doors - Light My Fire.mp3",
+		"the white stripes - seven nation army.mp3",
+		"the strokes - last nite.mp3",
+
+		// === ARTISTS WITH "&" / "and" IN NAME ===
+		"Hall & Oates - You Make My Dreams.mp3",
+		"Simon & Garfunkel - The Sound of Silence.mp3",
+		"Sam & Dave - Soul Man.mp3",
+		"Earth, Wind & Fire - September.mp3",
+		"Above & Beyond - Sun and Moon.mp3",
+		"Iron & Wine - Such Great Heights.mp3",
+		"Of Monsters and Men - Little Talks.mp3",
+		"Florence and the Machine - Dog Days Are Over.mp3",
+
+		// === COMPOUND TITLE WITH PUNCTUATION ===
+		"Artist - I Don't Want to Set The World on Fire.mp3",
+		"Artist - Eleanor Rigby (Live at Shea Stadium).mp3",
+		"Artist - Bohemian Rhapsody - Mama, just killed a man.mp3",
+
+		// === HYPHEN-CONTAINING TITLES ===
+		"Coldplay - X-Marks.mp3",
+		"Eminem - 'Till I Collapse.mp3",
+		"Eminem - 8 Mile.mp3",
+		"Artist - X-Ray.mp3",
+		"Artist - In-Between.mp3",
+		"Artist - A-Side.mp3",
+
+		// === FILE NAMING EDGE: NO ARTIST NAME, JUST DATE ===
+		"2024-01-15 - Recording.mp3",
+		"2024_01_15_recording.mp3",
+		"recording_2024-01-15.mp3",
+		"voice_memo_2024-12-31_23-59-59.mp3",
+
+		// === ALBUM IN FILENAME ===
+		"Artist - Album - 01 - Title.mp3",
+		"Artist - [Album] - 01 - Title.mp3",
+		"Artist - Title [Album].mp3",
+
+		// === SMART QUOTES vs STRAIGHT QUOTES (Unicode subtleties) ===
+		"Artist - Don't Stop Me Now.mp3",        // straight apostrophe (U+0027)
+		"Artist - Don’t Stop Me Now.mp3",   // curly apostrophe (U+2019)
+		"Artist - Donʼt Stop Me Now.mp3",   // modifier letter apostrophe (U+02BC)
+		"Artist - “Title”.mp3",        // curly double quotes
+		"Artist - \"Title\".mp3",                 // straight double quotes
+		"Artist - 'Title'.mp3",                   // straight single quotes
+		"Artist - «Title».mp3",        // French guillemets « »
+		"Artist - „Title“.mp3",        // German low-9 quotation
+
+		// === UNICODE SEPARATORS ===
+		"Artist • Title.mp3",      // bullet point •
+		"Artist ► Title.mp3",      // right-pointing pointer ►
+		"Artist → Title.mp3",      // rightwards arrow →
+		"Artist | Title.mp3",            // pipe (currently a garbage char)
+		"Artist \\ Title.mp3",           // backslash (Windows path separator)
+		"Artist / Title.mp3",            // forward slash (gets eaten by filepath.Base)
+		"Artist :: Title.mp3",           // double colon
+		"Artist <> Title.mp3",           // angle brackets
+
+		// === YEAR-ALBUM-TRACK SCHEMES ===
+		"Artist - 1969 - Album Title - 01 - Song.mp3",
+		"Artist - [1969] Album Title - 01 - Song.mp3",
+		"Artist - (1969) Album Title - 01 - Song.mp3",
+		"01 - The Beatles - 1969 - Abbey Road - Come Together.mp3",
+		"The Beatles - Abbey Road [1969] - 01 - Come Together.mp3",
+
+		// === BANDCAMP / SOUNDCLOUD DOWNLOAD CONVENTIONS ===
+		"Artist - 01 Title.mp3",          // Bandcamp default (no dash between track and title)
+		"Artist - 02. Title.mp3",         // Bandcamp with dot
+		"Artist - Title (free download).mp3",  // SoundCloud
+		"Artist - Title [Free Download].mp3",
+		"Artist - Title - SoundCloud.mp3",
+		"Artist - Title - downloaded with JDownloader.mp3",
+		"YouTube to MP3 - Artist - Title.mp3",
+
+		// === MUSICBRAINZ PICARD DEFAULTS ===
+		"Artist - Album - 01 - Title.mp3",         // matches Picard default
+		"01-01 Title.mp3",                          // Picard with disc-track
+		"01.01 Title.mp3",                          // Picard alt
+		"Artist - Album/01 Title.mp3",              // Picard hierarchical (forward slash!)
+
+		// === BOOTLEG / LIVE CONVENTIONS ===
+		"Artist - Title (Live Bootleg 1985 Berlin).mp3",
+		"Artist - Title (Live at Madison Square Garden, 1985).mp3",
+		"Artist - Title [Bootleg].mp3",
+		"Artist - Title (Studio Bootleg).mp3",
+		"Artist - Title (Soundboard).mp3",
+		"Artist - Title (FM Broadcast 1985).mp3",
+		"Artist - Title (Radio Broadcast).mp3",
+		"Bruce Springsteen - Born to Run (Live - Hammersmith Odeon, London - 1975).mp3",
+
+		// === LENGTH MARKERS (DJ/Vinyl) ===
+		"Artist - Title (12'' Mix).mp3",
+		"Artist - Title (7\" Edit).mp3",
+		"Artist - Title (Extended 12\" Version).mp3",
+		"Artist - Title (Original 12-inch Mix).mp3",
+
+		// === COVER / TRIBUTE CONVENTIONS ===
+		"Artist - Title (originally by OtherArtist).mp3",
+		"Artist - Title (Cover).mp3",
+		"Artist covers OtherArtist - Title.mp3",
+		"Artist - Title (OtherArtist Cover).mp3",
+		"Artist - Title (Tribute to OtherArtist).mp3",
+
+		// === COMPILATION SPECIFIC ===
+		"VA - 2024 Hits Collection - 01 - Artist - Song.mp3",
+		"V.A. - Collection - 01 - Artist - Song.mp3",
+		"v.a. - collection - 01 - artist - song.mp3",
+		"Various - Collection - 01 - Artist - Song.mp3",
+
+		// === EPISODE / PODCAST CONVENTIONS ===
+		"Show Name Ep. 042 - Topic - 2024-01-15.mp3",
+		"Podcast Name - Episode 142 - Guest Name.mp3",
+		"S01E03 - Title.mp3",
+		"Joe Rogan Experience #2000 - Elon Musk.mp3",
+		"H3 Podcast #500 - Guest Name.mp3",
+
+		// === DATE-PREFIXED RECORDINGS ===
+		"2024-01-15 Artist - Title.mp3",
+		"2024-01-15 - Artist - Title.mp3",
+		"[2024-01-15] Artist - Title.mp3",
+		"20240115 - Artist - Title.mp3",
+
+		// === NESTED PARENTHESES ===
+		"Artist - Title (Song (From Movie)).mp3",
+		"Artist - Title (Remix (Extended)).mp3",
+		"Artist - (Featured B) Title (Remix).mp3",
+		"Artist (Solo) - Title (Acoustic) (Live).mp3",
+
+		// === TITLE WITH SUBTITLE COLON ===
+		"Artist - Title: A Subtitle.mp3",
+		"Artist - Title - The Subtitle.mp3",
+		"Artist - Main Title (Subtitle).mp3",
+
+		// === REVERSED ORDER (some users put title first) ===
+		"Title - Artist.mp3",                    // ambiguous!
+		"Song Name - by Artist Name.mp3",
+		"Song Name by Artist.mp3",
+
+		// === NO-SPACE-AFTER-DASH TYPOS ===
+		"Artist-Title.mp3",                       // bare dash (no space)
+		"Artist -Title.mp3",                      // space only before
+		"Artist- Title.mp3",                      // space only after
+		"The Beatles- Hey Jude.mp3",
+		"Eminem-Without Me.mp3",
+
+		// === MULTIPLE SPACES, TABS ===
+		"Artist  -  Title.mp3",                   // double spaces around separator
+		"Artist\t-\tTitle.mp3",                   // tabs!
+		"Artist - Title.mp3",                     // single tab (rare)
+		"Artist   ---   Title.mp3",               // ridiculous spacing
+
+		// === REAL TRACK CONVENTIONS WITH LEADING ZERO ===
+		"02 - Artist - Title.mp3",
+		"02.Artist-Title.mp3",
+		"02)Artist - Title.mp3",
+		"(02) Artist - Title.mp3",
+		"02 ) Artist - Title.mp3",
+		"02. - Artist - Title.mp3",
+
+		// === SINGLE-NAME ARTISTS ===
+		"Cher - Believe.mp3",
+		"Madonna - Vogue.mp3",
+		"Drake - Hotline Bling.mp3",
+		"Pink - So What.mp3",
+		"Bono - Title.mp3",
+
+		// === FILENAMES WITH MULTIPLE PERIODS ===
+		"Mr. Mister - Kyrie.mp3",
+		"Dr. John - Right Place Wrong Time.mp3",
+		"Mr. Big - To Be With You.mp3",
+		"St. Vincent - Digital Witness.mp3",
+
+		// === EMPHASIS WITH UNDERSCORES (very old conventions) ===
+		"__Artist__ - __Title__.mp3",
+		"--Artist-- - --Title--.mp3",
+		"==Artist== - ==Title==.mp3",
 	}
 
 	var sb strings.Builder
@@ -288,11 +794,15 @@ func TestGenerateReport(t *testing.T) {
 			sb.WriteString("     ⚠ WARNING: Title is empty!\n")
 			hasIssue = true
 		}
-		if strings.ContainsAny(r.Artist, "~#@=%^*`|\\;") {
+		// Only flag truly unrealistic chars. #, @, |, $, ! are all
+		// legitimate in real artist/title names (Podcast #500, Artist@Venue,
+		// Ke$ha, SAD!, "Artist | Title" separator).
+		const reallyGarbage = "~=%^*`\\;"
+		if strings.ContainsAny(r.Artist, reallyGarbage) {
 			sb.WriteString("     ⚠ WARNING: Artist contains garbage chars!\n")
 			hasIssue = true
 		}
-		if strings.ContainsAny(r.Title, "~#@=%^*`|\\;") {
+		if strings.ContainsAny(r.Title, reallyGarbage) {
 			sb.WriteString("     ⚠ WARNING: Title contains garbage chars!\n")
 			hasIssue = true
 		}

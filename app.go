@@ -26,11 +26,30 @@ func initLogger() {
 	if logger != nil {
 		return // already initialized
 	}
-	exe, _ := os.Executable()
-	logPath := filepath.Join(filepath.Dir(exe), "audioink.log")
-	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		f, _ = os.OpenFile("audioink.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+
+	// Log lives next to history.json. AUDIOINK_DATA_DIR (set by tests)
+	// takes precedence; otherwise we use %APPDATA%/AudioInk/ on Windows
+	// (equivalent path elsewhere). This avoids two failure modes:
+	//   1) Writing to Program Files\AudioInk — requires admin.
+	//   2) Falling back to CWD — scatters log files across the user's
+	//      music folders when launched via right-click context menu.
+	var appDir string
+	if override := os.Getenv("AUDIOINK_DATA_DIR"); override != "" {
+		appDir = override
+	} else if dir, err := os.UserConfigDir(); err == nil {
+		appDir = filepath.Join(dir, "AudioInk")
+	}
+
+	var f *os.File
+	if appDir != "" {
+		if mkErr := os.MkdirAll(appDir, 0755); mkErr == nil {
+			f, _ = os.OpenFile(filepath.Join(appDir, "audioink.log"),
+				os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		}
+	}
+	if f == nil {
+		// Last-ditch fallback if even AppData is unwritable.
+		f, _ = os.OpenFile(os.DevNull, os.O_WRONLY, 0644)
 	}
 	logger = log.New(f, "", log.Ldate|log.Ltime)
 }
@@ -53,7 +72,6 @@ type App struct {
 	chooserChoice    int // 0=none, 1=gui, 2=autofix
 	pendingFiles     []PendingFile
 	confirmResults   []ManualEntry
-	confirmDone      chan struct{}
 	initialPaths     []string
 }
 
@@ -83,9 +101,6 @@ func (a *App) ConfirmSkip(index int) {
 }
 
 func (a *App) ConfirmDone() {
-	if a.confirmDone != nil {
-		close(a.confirmDone)
-	}
 	runtime.Quit(a.ctx)
 }
 
@@ -369,18 +384,6 @@ func (a *App) ApplyTagsOverwrite(requests []ApplyRequest) []ApplyResult {
 	return a.processApply(requests, "", true)
 }
 
-// ApplyQuick applies tags and renames a single file in place.
-// Used by the frontend ManualEntryDialog for garbage filenames.
-func (a *App) ApplyQuick(filePath, artist, title, extras string) ApplyResult {
-	logger.Printf("=== ApplyQuick: %s ===", filePath)
-	req := ApplyRequest{FilePath: filePath, Artist: artist, Title: title, Extras: extras}
-	results := a.processApply([]ApplyRequest{req}, "", true)
-	if len(results) > 0 {
-		return results[0]
-	}
-	return ApplyResult{FilePath: filePath, Error: "no result"}
-}
-
 func (a *App) processApply(requests []ApplyRequest, outputDir string, overwrite bool) []ApplyResult {
 	results := make([]ApplyResult, 0, len(requests))
 	var historyEntries []HistoryEntry
@@ -417,7 +420,7 @@ func (a *App) processApply(requests []ApplyRequest, outputDir string, overwrite 
 		}
 
 		if overwrite {
-			// Verify file still exists (may have been renamed by earlier ApplyQuick)
+			// Verify file still exists (may have been renamed in this batch)
 			if _, err := os.Stat(req.FilePath); os.IsNotExist(err) {
 				logger.Printf("  SKIP: file no longer exists (already renamed?)")
 				results = append(results, ApplyResult{

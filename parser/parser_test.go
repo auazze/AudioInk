@@ -466,10 +466,12 @@ func TestGarbageLeadingSpecialChars(t *testing.T) {
 }
 
 func TestExclamationInTitle(t *testing.T) {
-	// '!' should NOT be stripped — it's part of legitimate titles like SAD!
+	// '!' should NOT be stripped — it's part of legitimate titles like SAD!.
+	// All-upper word with a non-letter char (!) is preserved verbatim by TitleCase,
+	// matching XXXTENTACION's official stylization of "SAD!".
 	r := Parse("XXXTENTACION - SAD!.mp3")
 	assertEq(t, r.Artist, "Xxxtentacion")
-	assertEq(t, r.Title, "Sad!")
+	assertEq(t, r.Title, "SAD!")
 }
 
 func TestDollarInArtist(t *testing.T) {

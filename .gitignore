@@ -13,3 +13,5 @@ frontend/package-lock.json
 frontend/package.json.md5
 audioink.log
 donetests.txt
+tests/
+AudioInk.zip

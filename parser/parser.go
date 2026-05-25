@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 type Confidence int
@@ -44,11 +45,21 @@ var separators = []string{
 	" – ",
 	"_-_",
 	"+-+",
+	" | ",  // pipe-with-spaces (rare but real, e.g. "Artist | Title.mp3")
+	" • ",  // bullet
+	" → ",  // arrow
+	" ► ",  // pointer
 	" -",
 	"- ",
 }
 
-var trackPrefixRe = regexp.MustCompile(`^#?(\d{1,3})\s*[.\-_)\s]\s*`)
+// Track prefixes accepted:
+//   "#NN " (explicit # marker, then digits, then space)
+//   "NN.", "NN-", "NN_", "NN)" (digits + punctuation, space optional)
+// Bare "NN " (digits + space alone) is NOT a track prefix — too ambiguous
+// with band names like "50 Cent", "3 Doors Down", "4 Non Blondes".
+var trackPrefixHashRe = regexp.MustCompile(`^#(\d{1,3})\s+`)
+var trackPrefixPunctRe = regexp.MustCompile(`^(\d{1,3})\s*[.\-_)]\s*`)
 
 // Extras at end of string: (Remix), [Explicit], etc.
 var extrasParenRe = regexp.MustCompile(`\s*\(([^)]+)\)\s*$`)
@@ -72,6 +83,18 @@ var copyNumberRe = regexp.MustCompile(`\s*\(\d+\)\s*$`)
 
 // Trailing track suffix: _01, _02, _1 (underscore + 1-3 digits at end)
 var trackSuffixRe = regexp.MustCompile(`_(\d{1,3})$`)
+
+// Disc prefix at start: "Disc 1 - ", "CD2 - ", "Disc 1 Track 03 - ".
+// Captures the inner track number (if present) so it isn't lost.
+var discPrefixRe = regexp.MustCompile(`(?i)^(?:disc|cd)\s*\d+\s*(?:track\s*(\d+))?\s*[-_.]\s*`)
+
+// Date prefix at start: "2024-01-15 - ", "[2024-01-15] Artist", "20240115 ".
+// Requires a real-looking date: 19xx/20xx year + month + day, either
+// hyphen/underscore-separated OR packed 8-digit form. Trailing match
+// accepts whitespace alone OR explicit punctuation — but the date itself
+// must look like a date (year in 1900-2099 range, separators), so we
+// don't eat random 8-digit garbage like "12345678".
+var datePrefixRe = regexp.MustCompile(`^\[?(?:(?:19|20)\d{2}[-_]\d{2}[-_]\d{2}|(?:19|20)\d{6})\]?(?:\s+|\s*[-_.]\s*)`)
 
 // Multiple dashes/equals → single separator
 var multiDashRe = regexp.MustCompile(`\s*[-=]{2,}\s*`)
@@ -103,8 +126,38 @@ func Parse(path string) ParseResult {
 
 	name = strings.TrimSpace(name)
 
+	// Step 0: Unwrap whole-name parens/brackets like "(Artist - Title).mp3"
+	// or "[Artist - Title].mp3". Without this, extractExtras would eat the
+	// whole content as a single "extra" and leave the name empty.
+	name = unwrapWholeNameBrackets(name)
+
 	// Step 0: Strip copy suffixes (— копия, - Copy, (2), etc.)
 	name = stripCopySuffix(name)
+
+	// Strip disc prefix (Disc 1 - , CD2 - , Disc 1 Track 03 - ).
+	// If the prefix contains an embedded track number ("Disc 1 Track 03"),
+	// capture it so we don't lose the track count.
+	if m := discPrefixRe.FindStringSubmatch(name); m != nil {
+		if m[1] != "" {
+			n := 0
+			for _, c := range m[1] {
+				n = n*10 + int(c-'0')
+			}
+			result.Track = n
+		}
+		name = name[len(m[0]):]
+	}
+
+	// Strip leading date prefix ("2024-01-15 - ", "20240115 ", "[2024-01-15] ")
+	// commonly seen on voice memos and podcast filenames.
+	name = datePrefixRe.ReplaceAllString(name, "")
+
+	// Extract track prefix EARLY, while # and _ separators are still intact.
+	// (Later steps strip # as a garbage char and replace _ with spaces.)
+	// Skip if a disc prefix already supplied the track number.
+	if result.Track == 0 {
+		name, result.Track = extractTrack(name)
+	}
 
 	// Step 1: Extract track suffix (_01) before underscore replacement
 	var trackFromSuffix int
@@ -124,8 +177,11 @@ func Parse(path string) ParseResult {
 	// Step 5: Strip any remaining space-separated trailing garbage
 	name = stripTrailingGarbageWords(name)
 
-	// Step 6: Extract track number from beginning (#01, 01., etc.)
-	name, result.Track = extractTrack(name)
+	// Step 6: If track wasn't found at the early extract pass, try again now
+	// (handles cases where cleanup exposed a track marker).
+	if result.Track == 0 {
+		name, result.Track = extractTrack(name)
+	}
 	if result.Track == 0 {
 		result.Track = trackFromSuffix
 	}
@@ -264,19 +320,22 @@ func stripCopySuffix(name string) string {
 }
 
 func extractTrack(name string) (string, int) {
-	loc := trackPrefixRe.FindStringIndex(name)
-	if loc == nil {
-		return name, 0
+	for _, re := range []*regexp.Regexp{trackPrefixHashRe, trackPrefixPunctRe} {
+		loc := re.FindStringIndex(name)
+		if loc == nil {
+			continue
+		}
+		match := re.FindStringSubmatch(name)
+		if match == nil {
+			continue
+		}
+		num := 0
+		for _, c := range match[1] {
+			num = num*10 + int(c-'0')
+		}
+		return strings.TrimSpace(name[loc[1]:]), num
 	}
-	match := trackPrefixRe.FindStringSubmatch(name)
-	if match == nil {
-		return name, 0
-	}
-	num := 0
-	for _, c := range match[1] {
-		num = num*10 + int(c-'0')
-	}
-	return strings.TrimSpace(name[loc[1]:]), num
+	return name, 0
 }
 
 func extractFeatInParens(name string) (string, []string) {
@@ -348,29 +407,31 @@ func splitBySeparator(name string) (artist, title string, found bool) {
 	return "", name, false
 }
 
+// findBareDash returns the BYTE index of the first dash usable as a
+// separator. Callers slice by byte index, so the index must NOT be a
+// rune index — that mangles UTF-8 inside multi-byte strings like
+// "Артист-Название" (which would split mid-rune).
 func findBareDash(name string) int {
 	runes := []rune(name)
+	dashCount := 0
+	for _, c := range runes {
+		if c == '-' {
+			dashCount++
+		}
+	}
+
+	byteIdx := 0
 	for i, r := range runes {
-		if r != '-' {
-			continue
-		}
-		if i == 0 || i == len(runes)-1 {
-			continue
-		}
-		before := runes[i-1]
-		after := runes[i+1]
-		if unicode.IsSpace(before) || unicode.IsSpace(after) {
-			return i
-		}
-		dashCount := 0
-		for _, c := range runes {
-			if c == '-' {
-				dashCount++
+		if r == '-' {
+			if i > 0 && i < len(runes)-1 {
+				before := runes[i-1]
+				after := runes[i+1]
+				if unicode.IsSpace(before) || unicode.IsSpace(after) || dashCount == 1 {
+					return byteIdx
+				}
 			}
 		}
-		if dashCount == 1 {
-			return i
-		}
+		byteIdx += utf8.RuneLen(r)
 	}
 	return -1
 }
@@ -442,6 +503,52 @@ func splitArtists(s string) []string {
 	return result
 }
 
+// unwrapWholeNameBrackets removes surrounding parens/brackets when the
+// entire content is wrapped in them. Handles "(Artist - Title)" → "Artist - Title"
+// and "[Artist - Title]" → "Artist - Title". Nested wraps are unwrapped too.
+func unwrapWholeNameBrackets(name string) string {
+	for {
+		name = strings.TrimSpace(name)
+		if len(name) < 2 {
+			return name
+		}
+		first := name[0]
+		last := name[len(name)-1]
+		if (first == '(' && last == ')') || (first == '[' && last == ']') {
+			inner := name[1 : len(name)-1]
+			// Sanity: only unwrap if inner doesn't have its own unbalanced opener.
+			if !strings.ContainsAny(inner[:1], "([") || balanced(inner) {
+				name = inner
+				continue
+			}
+		}
+		return name
+	}
+}
+
+func balanced(s string) bool {
+	parens, brackets := 0, 0
+	for _, r := range s {
+		switch r {
+		case '(':
+			parens++
+		case ')':
+			parens--
+			if parens < 0 {
+				return false
+			}
+		case '[':
+			brackets++
+		case ']':
+			brackets--
+			if brackets < 0 {
+				return false
+			}
+		}
+	}
+	return parens == 0 && brackets == 0
+}
+
 // extractTrackSuffix strips trailing _01, _02 etc. and returns the track number.
 func extractTrackSuffix(name string) (string, int) {
 	m := trackSuffixRe.FindStringSubmatch(name)
@@ -478,7 +585,14 @@ func stripTrailingIds(name string) string {
 	return name
 }
 
-// isGarbageId returns true if the string looks like a numeric/hex ID.
+// isGarbageId returns true if the string looks like a numeric/hex ID
+// from a streaming platform (VK, SoundCloud, etc.).
+//
+// Exception: 4-digit numbers in the year range (1000-2999) are treated
+// as legitimate content — many song/album titles are years
+// (Prince "1999", Bowling for Soup "1985", Tchaikovsky "1812 Overture").
+// Longer all-digit strings (5+) and 4-digit non-year numbers are still
+// considered garbage.
 func isGarbageId(s string) bool {
 	if len(s) == 0 {
 		return false
@@ -492,6 +606,14 @@ func isGarbageId(s string) bool {
 			}
 		}
 		if allDigits {
+			// Spare 4-digit years from garbage classification.
+			if len(s) == 4 {
+				year := (int(s[0]-'0') * 1000) + (int(s[1]-'0') * 100) +
+					(int(s[2]-'0') * 10) + int(s[3]-'0')
+				if year >= 1000 && year <= 2999 {
+					return false
+				}
+			}
 			return true
 		}
 	}
@@ -585,10 +707,45 @@ var abbreviations = map[string]bool{
 	"DC": true, "VR": true, "AI": true, "XL": true, "BTS": true, "EDM": true,
 }
 
+// Roman numerals up to XX — common in classical track titles
+// (e.g. "Symphony No. 9 - IV. Ode to Joy").
+var romanNumerals = map[string]bool{
+	"I": true, "II": true, "III": true, "IV": true, "V": true, "VI": true,
+	"VII": true, "VIII": true, "IX": true, "X": true, "XI": true, "XII": true,
+	"XIII": true, "XIV": true, "XV": true, "XVI": true, "XVII": true,
+	"XVIII": true, "XIX": true, "XX": true,
+}
+
+// hasLetter reports whether the string contains at least one Unicode letter.
+func hasLetter(s string) bool {
+	for _, r := range s {
+		if unicode.IsLetter(r) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasNonLetter reports whether the string contains at least one
+// non-letter, non-space rune (digit, dot, dollar, etc.).
+func hasNonLetter(s string) bool {
+	for _, r := range s {
+		if !unicode.IsLetter(r) && !unicode.IsSpace(r) {
+			return true
+		}
+	}
+	return false
+}
+
 // titleCase capitalizes the first letter of each word.
-// Each word is checked independently: all-lower or ALL-CAPS words get title-cased,
-// known abbreviations (DJ, NF, MC, etc.) are kept ALL-CAPS,
-// mixed-case words (e.g. "McDonald") are left as-is.
+// Preservation rules (in order):
+//   - Roman numerals (IV, V, IX, ...) stay UPPER
+//   - Known abbreviations (DJ, NF, BTS, ...) stay UPPER
+//   - All-UPPER words containing non-letter chars (P.O.D., A$AP, 3OH!3) are preserved
+//   - All-lower words containing dots (will.i.am) are preserved
+//   - Mixed-case words (Daft Punk, McDonald) are left as-is
+//   - Plain all-lower or all-UPPER words → Title Case
+//   - Words starting with a non-letter capitalize the first LETTER (e.g. "$abc" → "$Abc")
 func TitleCase(s string) string {
 	words := strings.Fields(s)
 	for i, w := range words {
@@ -598,15 +755,35 @@ func TitleCase(s string) string {
 			continue
 		}
 		upper := strings.ToUpper(w)
+		if romanNumerals[upper] && w == upper {
+			words[i] = upper
+			continue
+		}
 		if abbreviations[upper] {
 			words[i] = upper
 			continue
 		}
 		lower := strings.ToLower(w)
+		// Stylized lowercase with dots (will.i.am, dwt.tv) — preserve.
+		if w == lower && hasLetter(w) && strings.Count(w, ".") >= 2 {
+			continue
+		}
+		// All-UPPER with non-letter chars (initialisms like P.O.D., M.I.A.,
+		// stylized names like A$AP, 3OH!3) — preserve.
+		if w == upper && hasNonLetter(w) && hasLetter(w) {
+			continue
+		}
 		if w == lower || w == upper {
-			r = []rune(lower)
-			r[0] = unicode.ToUpper(r[0])
-			words[i] = string(r)
+			lowered := []rune(lower)
+			// Capitalize the first LETTER, not just the first rune
+			// (so "$abc" → "$Abc", "1985" → "1985" unchanged).
+			for j, c := range lowered {
+				if unicode.IsLetter(c) {
+					lowered[j] = unicode.ToUpper(c)
+					break
+				}
+			}
+			words[i] = string(lowered)
 		}
 	}
 	return strings.Join(words, " ")
