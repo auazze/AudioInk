@@ -24,6 +24,26 @@ The standalone `build/bin/AudioInk.exe` next to the installer is a Wails build s
 
 Quick-copy shortcut (`taskkill + cp`) is ONLY acceptable when explicitly OK'd in the conversation ("just copy it over for now", "skip the installer this time"). Never as a default. Otherwise: build installer → point at it → wait for them to reinstall → continue.
 
+## ⚠ The installer and ffmpeg binaries are NOT in git — rebuild/restage if missing
+
+`build/bin/*` is fully gitignored (the installer is a ~78MB build artifact, not source). So **a fresh `git clone` has NO installer and NO `ffmpeg.exe`/`ffprobe.exe`/`fpcalc.exe`**. Whenever the installer is missing, was never built this session, the repo was just cloned, or anything looks "fresh/empty" in `build/bin/` — do this BEFORE `wails build --nsis` (otherwise NSIS fails on the missing `File "..\..\bin\ffmpeg.exe"` directives):
+
+```bash
+# 1. Restage the three bundled binaries into build/bin/ (NSIS copies them into $INSTDIR).
+#    Source on the dev machine:
+cp "/c/ProgramData/chocolatey/lib/ffmpeg/tools/ffmpeg/bin/ffmpeg.exe"  build/bin/ffmpeg.exe
+cp "/c/ProgramData/chocolatey/lib/ffmpeg/tools/ffmpeg/bin/ffprobe.exe" build/bin/ffprobe.exe
+# fpcalc.exe: Chromaprint release github.com/acoustid/chromaprint/releases (v1.5.1 windows-x86_64).
+# If chocolatey ffmpeg isn't installed: `choco install ffmpeg`, or any full ffmpeg/ffprobe build.
+
+# 2. Then the normal build (frontend if Svelte changed, then installer):
+cd frontend && npm run build && cd ..
+export PATH="$PATH:/c/Program Files (x86)/NSIS/Bin:/c/Program Files (x86)/NSIS"
+wails build --nsis
+```
+
+Verify the three exes are ~96MB / ~96MB / ~3MB in `build/bin/` before building. The app resolves them at runtime next to `AudioInk.exe` (then PATH fallback), so they MUST end up in the installer. If you ever can't restage them, say so explicitly — don't ship an installer without them (audio features would silently disable).
+
 ## Project Overview
 
 Desktop app that parses audio filenames and writes correct metadata tags. Built with Go + Wails v2 (Svelte frontend).
