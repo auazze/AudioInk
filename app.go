@@ -11,6 +11,7 @@ import (
 	goruntime "runtime"
 	"strings"
 
+	"AudioInk/audio"
 	"AudioInk/parser"
 	"AudioInk/scanner"
 	"AudioInk/tagger"
@@ -73,11 +74,17 @@ type App struct {
 	pendingFiles     []PendingFile
 	confirmResults   []ManualEntry
 	initialPaths     []string
+
+	audio    *audio.Runner
+	mediaSet map[string]bool // allowlist of paths the /media handler may serve
 }
 
 func NewApp() *App {
 	initLogger()
-	return &App{}
+	return &App{
+		audio:    audio.New(logger),
+		mediaSet: make(map[string]bool),
+	}
 }
 
 func (a *App) IsConfirmMode() bool {
@@ -129,10 +136,10 @@ func (a *App) ConfirmBatchFromTags(fromIndex int, useArtist, useTitle bool) {
 
 // --- Mode chooser methods (context menu → choose GUI or auto-fix) ---
 
-func (a *App) IsChooserMode() bool       { return a.chooserMode }
-func (a *App) GetChooserFileCount() int   { return a.chooserFileCount }
-func (a *App) ChooseGUI()                 { a.chooserChoice = 1; runtime.Quit(a.ctx) }
-func (a *App) ChooseAutoFix()             { a.chooserChoice = 2; runtime.Quit(a.ctx) }
+func (a *App) IsChooserMode() bool      { return a.chooserMode }
+func (a *App) GetChooserFileCount() int { return a.chooserFileCount }
+func (a *App) ChooseGUI()               { a.chooserChoice = 1; runtime.Quit(a.ctx) }
+func (a *App) ChooseAutoFix()           { a.chooserChoice = 2; runtime.Quit(a.ctx) }
 
 // --- Initial files (context menu → "Open in GUI") ---
 
@@ -163,6 +170,11 @@ type FileResult struct {
 	NewFilename     string   `json:"newFilename"`
 	CleanMetaArtist string   `json:"cleanMetaArtist"`
 	CleanMetaTitle  string   `json:"cleanMetaTitle"`
+
+	// Populated on-demand by ProbeHealth (not on scan), via events. Nil until then.
+	Specs     *audio.Specs  `json:"specs,omitempty"`
+	Health    *audio.Health `json:"health,omitempty"`
+	DupeGroup int           `json:"dupeGroup,omitempty"` // 0 = no group
 }
 
 func buildNewFilename(artist, title, extras, ext string) string {
@@ -301,7 +313,20 @@ func (a *App) processFiles(paths []string) []FileResult {
 		pr := parser.Parse(f)
 		results = append(results, toFileResult(pr))
 	}
+	a.registerMedia(supported)
 	return results
+}
+
+// registerMedia adds paths to the allowlist the /media player handler is
+// permitted to serve (path-traversal guard — the handler refuses anything not
+// in this set).
+func (a *App) registerMedia(paths []string) {
+	if a.mediaSet == nil {
+		a.mediaSet = make(map[string]bool)
+	}
+	for _, p := range paths {
+		a.mediaSet[filepath.Clean(p)] = true
+	}
 }
 
 func (a *App) ScanDirectory(dir string) ([]FileResult, error) {
@@ -319,6 +344,7 @@ func (a *App) ScanDirectory(dir string) ([]FileResult, error) {
 		pr := parser.Parse(f)
 		results = append(results, toFileResult(pr))
 	}
+	a.registerMedia(files)
 	return results, nil
 }
 

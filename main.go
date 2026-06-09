@@ -112,7 +112,8 @@ func launchGUI(initialPaths []string) {
 		DisableResize: false,
 		Frameless:     false,
 		AssetServer: &assetserver.Options{
-			Assets: assets,
+			Assets:  assets,
+			Handler: mediaHandler(app), // serves /media?path= for the preview player
 		},
 		BackgroundColour: &options.RGBA{R: 15, G: 15, B: 20, A: 1},
 		OnStartup:        app.startup,

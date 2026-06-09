@@ -43,13 +43,17 @@ Desktop app that parses audio filenames and writes correct metadata tags. Built 
 main.go              — Entry point: --fix → CLI flow, --confirm-only / --gui-files → re-exec child entries, otherwise GUI
 app.go               — Backend API exposed to frontend (scan, parse, apply, confirm mode methods). initLogger writes to %APPDATA%/AudioInk/audioink.log.
 confirm.go           — Hosts the confirm dialog in a CHILD process via re-exec (showConfirmDialog spawns, runConfirmDialogChild runs the wails.Run there). Avoids two wails.Run in one process.
-fix.go               — Headless CLI fix logic: batch parse → batch confirm (via child) → batch apply → toast notification
+fix.go               — Headless CLI fix logic: batch parse → batch confirm (via child) → batch apply
 dialog.go            — ManualEntry struct (JSON-tagged for parent/child exchange)
-notify.go            — Native toast: Windows NotifyIcon balloon, macOS osascript, Linux notify-send
+audioapp.go          — Wails-bound FFmpeg feature methods: ProbeHealth, ComputeReplayGain, ConvertFiles, DetectSilence/TrimSilence, RepairFiles, FindDuplicates, AudioReady
+backup.go            — processDestructive (Copy/Overwrite mirroring processApply), backupsDir/backupForUndo/restoreBackup for byte-level undo of destructive ops
+id3clean.go          — CleanID3: strip junk/duplicate tag blocks via taglib Clear (copy→clean→swap, undoable via backup)
+mediaserver.go       — AssetServer Handler serving /media?path= to the webview <audio> (http.ServeContent + Range), path-traversal allowlist
+audio/               — FFmpeg/ffprobe/fpcalc subprocess CHOKEPOINT (no other package shells out): runner, probe, health, convert, silence, remux, loudness (ReplayGain), dupes (Chromaprint). No CGo.
 parser/              — Filename parser: separators, track numbers, extras, featured artists, confidence
 tagger/              — Read/write audio metadata via go-taglib
 scanner/             — Recursive directory scanner, extension filter
-frontend/src/        — Svelte UI: DropZone, FileTable, EditRow, ConfirmView (CLI), ModeChooser (CLI)
+frontend/src/        — Svelte UI: DropZone, FileTable, EditRow, ConfirmView (CLI), ModeChooser (CLI), Player (preview), AudioToolbar (audio ops), audioOps.js (backend wrappers + events)
 build/windows/       — NSIS installer: context menu, auto-kill processes, reinstall/uninstall
 build/darwin/        — macOS: install.sh (app + Quick Action), existing install detection
 build/linux/         — Linux: install-context-menu.sh (binary + Nautilus/Dolphin), existing install detection
@@ -69,7 +73,21 @@ build/linux/         — Linux: install-context-menu.sh (binary + Nautilus/Dolph
 - **Drag & drop**: Uses Wails native `OnFileDrop` with `DisableWebViewDrop: true`
 - **Case-safe rename**: `pathsEqual()` for case-insensitive path comparison on Windows (avoids spurious `(2)` suffix)
 - **Logging**: `audioink.log` in `%APPDATA%/AudioInk/` (next to `history.json`). Single shared file for GUI, CLI, and child processes. Falls back to `os.DevNull` if AppData is unwritable.
-- **CLI notification**: Auto-fix shows a native toast on completion (Windows: NotifyIcon balloon via PowerShell; macOS: osascript; Linux: notify-send). See `notify.go`.
+- **No toast notifications**: CLI auto-fix completes silently (no Windows balloon/PowerShell toast — removed by user request). Outcome is logged only.
+
+## Audio Features (FFmpeg)
+
+Bundled `ffmpeg.exe` + `ffprobe.exe` + `fpcalc.exe` sit next to `AudioInk.exe` (NSIS `File` directives; staged in `build/bin/` before `wails build`). Resolved at runtime by absolute path (`filepath.Dir(os.Executable())`) with PATH fallback for dev/macOS/Linux. All invocation goes through the `audio` package — the single subprocess chokepoint. taglib still owns tags; FFmpeg only touches the audio stream.
+
+- **Health badges (#7)**: `ProbeHealth(paths, deep)` runs ffprobe (specs) + checks (ext-vs-codec, no cover; deep adds silence/clipping/transcode-suspicion). Streams results via `health:result`/`health:done` events → per-file badge in EditRow. On-demand (cheap probe after scan; "Deep scan" button for heavy).
+- **Preview player (#2)**: `Player.svelte` `<audio src="/media?path=…">`, Web Audio graph `source→ReplayGain→volume→dest`. Volume slider mandatory, **default 25%**. ReplayGain A/B is non-destructive (gain via `ComputeReplayGain`, applied in-browser; never re-encodes).
+- **Convert (#6) / Trim silence (#9) / Repair (#3)**: destructive ops via `processDestructive`, respecting the existing Copy-vs-Overwrite chooser. Overwrite backs up the original to `%APPDATA%/AudioInk/backups` and records `HistoryEntry.BackupPath` so Undo restores bytes; Copy writes to `AudioInk/` and Undo deletes the copy (`DeleteOnUndo`). Destructive ops are undo-only (no redo).
+- **Normalize loudness**: `NormalizeFiles` measures EBU R128 loudness (ffmpeg) and writes a `REPLAYGAIN_TRACK_GAIN` tag via taglib — non-destructive (no re-encode; a RG-aware player applies it). Toolbar "Normalize" button. Distinct from the player's A/B preview.
+- **Clean tags (#5)**: `CleanID3` strips junk/duplicate blocks via taglib `Clear` (copy→clean→swap; full-bytes undo via backup).
+- **Destructive temp files keep the target extension** (`name.audioink-tmp.mp3`, not `name.mp3.audioink-tmp`) — ffmpeg picks the output muxer from the extension, so a foreign suffix makes convert/trim/repair fail. See `backup.go`.
+- **Duplicates (#8)**: `FindDuplicates` fingerprints locally via fpcalc and compares pairwise (`GroupDuplicates`, bit-error-rate) — NO network/API. Same-song-different-bitrate → one group; shown as "DUP n" badge.
+- **Multi-select**: ops act on checked rows, or all files if none checked. Progress via `convert:progress`/`trim:progress` events.
+- **Dropped from scope**: online acoustic ID (needs internet/AcoustID), standalone cover embedding, audio-editor features (fades/denoise/cut). Loudness is ReplayGain (tag), never destructive loudnorm.
 
 ## Commands
 

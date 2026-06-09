@@ -261,7 +261,6 @@ func fixPaths(paths []string, autoFix bool) int {
 	recordBatch(mode, historyEntries)
 
 	total := len(supported)
-	showNotification(successes, errors, total)
 	logger.Printf("=== Done: %d/%d successful ===", successes, total)
 
 	if errors > 0 {

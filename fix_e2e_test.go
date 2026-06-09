@@ -45,8 +45,8 @@ func TestBuildNewFilename(t *testing.T) {
 		{"Daft Punk", "Get Lucky", "", ".mp3", "Daft Punk - Get Lucky.mp3"},
 		{"Queen", "Bohemian Rhapsody", "Live", ".flac", "Queen - Bohemian Rhapsody (Live).flac"},
 		{"", "Just A Title", "", ".mp3", "Just A Title.mp3"},
-		{"Artist", "", "", ".mp3", ""},          // no title — empty result
-		{"", "", "", ".mp3", ""},                // both empty
+		{"Artist", "", "", ".mp3", ""}, // no title — empty result
+		{"", "", "", ".mp3", ""},       // both empty
 		{"A", "B", "Remix, Live", ".wav", "A - B (Remix, Live).wav"},
 		{"Кино", "Группа крови", "", ".mp3", "Кино - Группа крови.mp3"},
 		// Forbidden Windows chars stripped from artist + title
@@ -80,7 +80,7 @@ func TestSanitizeFilename_PreservesUnicode(t *testing.T) {
 	cases := []string{
 		"Кино — Группа крови",
 		"米津玄師 - Lemon",
-		"P!nk - So What", // ! is legal
+		"P!nk - So What",  // ! is legal
 		"Ke$ha - TiK ToK", // $ is legal
 	}
 	for _, in := range cases {
@@ -101,11 +101,11 @@ func TestStripExtrasFromTitle(t *testing.T) {
 	}{
 		{"Title (Remix)", "Remix", "Title"},
 		{"Title (Live)", "Live", "Title"},
-		{"Title", "Remix", "Title"},                  // no suffix to strip
-		{"Title", "", "Title"},                       // no extras
-		{"", "Remix", ""},                            // no title
-		{"Title (Remix) (Remix)", "Remix", "Title"},  // multiple suffixes stripped
-		{"Title (REMIX)", "Remix", "Title"},          // case-insensitive
+		{"Title", "Remix", "Title"},                 // no suffix to strip
+		{"Title", "", "Title"},                      // no extras
+		{"", "Remix", ""},                           // no title
+		{"Title (Remix) (Remix)", "Remix", "Title"}, // multiple suffixes stripped
+		{"Title (REMIX)", "Remix", "Title"},         // case-insensitive
 		{"Title (remix)", "REMIX", "Title"},
 		{"Title (Different)", "Remix", "Title (Different)"}, // mismatched extras kept
 	}

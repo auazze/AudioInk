@@ -6,6 +6,8 @@
     export let showStatus = false;
     export let pendingArtist = '';
     export let pendingTitle = '';
+    export let selected = false;
+    export let active = false;
 
     const dispatch = createEventDispatcher();
 
@@ -55,7 +57,7 @@
     }
 
     function statusIcon(file) {
-        if (file.status === 'done') return '\u2713';
+        if (file.status === 'done') return '✓';
         if (file.status === 'error') return '!';
         return '';
     }
@@ -73,15 +75,50 @@
     }
 
     function confidenceIcon(c) {
-        if (c === 'high') return '\u2713';
+        if (c === 'high') return '✓';
         if (c === 'medium') return '~';
         return '?';
     }
+
+    // --- health badge ---
+    $: health = file.health;
+    function healthClass(h) {
+        if (!h) return '';
+        if (h.status === 'ok') return 'health-ok';
+        if (h.status === 'warn') return 'health-warn';
+        return 'health-bad';
+    }
+    function healthIcon(h) {
+        if (!h) return '';
+        if (h.status === 'ok') return '♪';   // ♪
+        if (h.status === 'warn') return '!';
+        return '✕';                            // ✕
+    }
+    $: healthTip = health
+        ? (health.issues && health.issues.length ? health.issues.join('\n') : 'OK')
+          + (health.specs ? `\n${specLine(health.specs)}` : '')
+        : '';
+    function specLine(s) {
+        const parts = [];
+        if (s.codec) parts.push(s.codec);
+        if (s.bitrateKbps) parts.push(s.bitrateKbps + ' kbps');
+        if (s.sampleRate) parts.push((s.sampleRate / 1000) + ' kHz');
+        return parts.join(' · ');
+    }
 </script>
 
-<tr class="file-row" class:row-done={file.status === 'done'} class:row-error={file.status === 'error'} class:row-preview={hasDiff}>
+<tr class="file-row" class:row-done={file.status === 'done'} class:row-error={file.status === 'error'} class:row-preview={hasDiff} class:row-active={active}>
+    <!-- Select + play -->
+    <td class="cell-select">
+        <input type="checkbox" checked={selected} on:change={() => dispatch('toggle', file.filePath)} />
+        <button class="play-btn" class:playing={active} on:click={() => dispatch('play', file)} title="Preview">▶</button>
+    </td>
+
     <!-- Filename -->
     <td class="cell-filename" title={showStatus && file.outputFilename ? file.outputFilename : file.filename}>
+        {#if file.dupeGroup}
+            <span class="dupe-chip" title="Duplicate group {file.dupeGroup}">DUP {file.dupeGroup}</span>
+        {/if}
         {#if showStatus && file.outputFilename}
             <span class="new-name">{file.outputFilename}</span>
         {:else if filenameDiff}
@@ -97,10 +134,10 @@
         {#if editingField === 'artist'}
             <input class="edit-input" bind:value={editValue} on:blur={commitEdit} on:keydown={handleKeydown} autofocus />
         {:else if artistDiff}
-            <span class="diff-old">{file.artist || '\u2014'}</span>
+            <span class="diff-old">{file.artist || '—'}</span>
             <span class="diff-new">{pendingArtist}</span>
         {:else}
-            <span class="cell-value" class:empty={!file.artist}>{file.artist || '\u2014'}</span>
+            <span class="cell-value" class:empty={!file.artist}>{file.artist || '—'}</span>
         {/if}
     </td>
 
@@ -109,10 +146,17 @@
         {#if editingField === 'title'}
             <input class="edit-input" bind:value={editValue} on:blur={commitEdit} on:keydown={handleKeydown} autofocus />
         {:else if titleDiff}
-            <span class="diff-old">{file.title || '\u2014'}</span>
+            <span class="diff-old">{file.title || '—'}</span>
             <span class="diff-new">{pendingTitle}</span>
         {:else}
-            <span class="cell-value" class:empty={!file.title}>{file.title || '\u2014'}</span>
+            <span class="cell-value" class:empty={!file.title}>{file.title || '—'}</span>
+        {/if}
+    </td>
+
+    <!-- Health -->
+    <td class="cell-health">
+        {#if health}
+            <span class="conf-badge {healthClass(health)}" title={healthTip}>{healthIcon(health)}</span>
         {/if}
     </td>
 
@@ -140,6 +184,7 @@
     .row-done { background: rgba(52, 211, 153, 0.03); }
     .row-error { background: rgba(248, 113, 113, 0.05); }
     .row-preview { background: rgba(99, 102, 241, 0.03); }
+    .row-active { background: rgba(124, 106, 239, 0.10); }
 
     td {
         padding: 6px 12px;
@@ -150,9 +195,43 @@
         vertical-align: middle;
     }
 
+    .cell-select {
+        text-align: center;
+        white-space: nowrap;
+        padding-left: 8px;
+        padding-right: 0;
+    }
+    .cell-select input { cursor: pointer; accent-color: var(--accent); vertical-align: middle; }
+
+    .play-btn {
+        margin-left: 6px;
+        border: none;
+        background: transparent;
+        color: var(--text-dim);
+        cursor: pointer;
+        font-size: 11px;
+        padding: 2px 4px;
+        border-radius: 4px;
+        vertical-align: middle;
+    }
+    .play-btn:hover { color: var(--accent); background: rgba(124, 106, 239, 0.12); }
+    .play-btn.playing { color: var(--accent); }
+
     .cell-filename {
         color: var(--text-dim);
         font-size: 12px;
+    }
+
+    .dupe-chip {
+        display: inline-block;
+        font-size: 9px;
+        font-weight: 700;
+        color: var(--yellow);
+        background: rgba(251, 191, 36, 0.15);
+        border-radius: 4px;
+        padding: 1px 4px;
+        margin-right: 6px;
+        vertical-align: middle;
     }
 
     .new-name { color: var(--green); font-size: 12px; }
@@ -188,7 +267,7 @@
         line-height: 1.3;
     }
 
-    .cell-confidence { text-align: center; width: 40px; }
+    .cell-confidence, .cell-health { text-align: center; }
 
     .conf-badge {
         display: inline-flex;
@@ -204,4 +283,8 @@
     .conf-high, .stat-done { background: rgba(52, 211, 153, 0.15); color: var(--green); }
     .conf-medium { background: rgba(251, 191, 36, 0.15); color: var(--yellow); }
     .conf-low, .stat-error { background: rgba(248, 113, 113, 0.15); color: var(--red); }
+
+    .health-ok { background: rgba(52, 211, 153, 0.15); color: var(--green); }
+    .health-warn { background: rgba(251, 191, 36, 0.15); color: var(--yellow); }
+    .health-bad { background: rgba(248, 113, 113, 0.15); color: var(--red); }
 </style>

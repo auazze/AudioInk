@@ -3,9 +3,177 @@
     import FileTable from './components/FileTable.svelte';
     import ConfirmView from './components/ConfirmView.svelte';
     import ModeChooser from './components/ModeChooser.svelte';
-    import { SelectFiles, SelectDirectory, ScanFiles, ApplyTagsCopy, ApplyTagsOverwrite, OpenOutputFolder, IsConfirmMode, IsChooserMode, GetInitialFiles, UndoLast, RedoLast } from '../wailsjs/go/main/App.js';
+    import Player from './components/Player.svelte';
+    import AudioToolbar from './components/AudioToolbar.svelte';
+    import { SelectFiles, SelectDirectory, ScanFiles, ApplyTagsCopy, ApplyTagsOverwrite, OpenOutputFolder, IsConfirmMode, IsChooserMode, GetInitialFiles, UndoLast, RedoLast, AudioReady } from '../wailsjs/go/main/App.js';
     import { OnFileDrop } from '../wailsjs/runtime/runtime.js';
+    import { subscribeAudioEvents, runConvert, detectSilenceFor, runTrim, CleanID3, RepairFiles, NormalizeFiles, FindDuplicates, ProbeHealth } from './audioOps.js';
     import { onMount } from 'svelte';
+
+    // ---- Audio features (FFmpeg) ----
+    let selected = new Set();   // filePaths explicitly selected; empty = act on all
+    let previewFile = null;     // file shown in the bottom player
+    let audioReady = false;     // ffmpeg/ffprobe found
+    let opBusy = false;         // an audio op is running
+    let opProgress = {};        // filePath -> 0..1
+    let opMessage = '';         // transient status line
+    let pendingOp = null;       // {type, ext?, quality?} awaiting Copy/Overwrite choice
+    let dupesStatus = '';
+
+    $: targetPaths = (selected.size > 0 ? files.filter(f => selected.has(f.filePath)) : files).map(f => f.filePath);
+
+    function toggleSelect(path) {
+        if (selected.has(path)) selected.delete(path); else selected.add(path);
+        selected = selected;
+    }
+    function toggleAll(val) {
+        selected = val ? new Set(files.map(f => f.filePath)) : new Set();
+    }
+    function playFile(file) { previewFile = file; }
+
+    function flashOp(msg) {
+        opMessage = msg;
+        setTimeout(() => { if (opMessage === msg) opMessage = ''; }, 3000);
+    }
+
+    function applyHealth(filePath, health) {
+        const idx = files.findIndex(f => f.filePath === filePath);
+        if (idx >= 0) {
+            files[idx] = { ...files[idx], health, specs: health ? health.specs : undefined };
+            files = files;
+        }
+    }
+
+    // Cheap health probe (ffprobe specs + format checks) for the current list.
+    function kickHealth() {
+        if (audioReady && files.length > 0) {
+            ProbeHealth(files.map(f => f.filePath), false);
+        }
+    }
+
+    // --- audio op trigger → ask Copy/Overwrite, then run ---
+    function startOp(op) {
+        if (targetPaths.length === 0 || opBusy) return;
+        pendingOp = op;
+        showChoice = true;
+    }
+    function opConvert(e) { startOp({ type: 'convert', ext: e.detail.ext, quality: e.detail.quality }); }
+    function opTrim()      { startOp({ type: 'trim' }); }
+    function opClean()     { startOp({ type: 'clean' }); }
+    function opRepair()    { startOp({ type: 'repair' }); }
+    function opNormalize() { startOp({ type: 'normalize' }); }
+
+    function opTitle(op) {
+        const n = targetPaths.length;
+        const what = { convert: 'Convert', trim: 'Trim silence', clean: 'Clean tags', repair: 'Repair', normalize: 'Normalize loudness' }[op.type] || 'Process';
+        return `${what} ${n} file${n > 1 ? 's' : ''} — how to save?`;
+    }
+
+    $: opPct = (() => {
+        const v = Object.values(opProgress);
+        if (!v.length) return 0;
+        return Math.round(v.reduce((a, b) => a + b, 0) / v.length * 100);
+    })();
+
+    function opDeepScan() {
+        if (audioReady && targetPaths.length > 0) {
+            flashOp('Deep scanning ' + targetPaths.length + ' files…');
+            ProbeHealth(targetPaths, true);
+        }
+    }
+
+    async function opFindDupes() {
+        if (!audioReady || targetPaths.length === 0 || opBusy) return;
+        opBusy = true;
+        dupesStatus = 'Fingerprinting…';
+        try {
+            const groups = await FindDuplicates(targetPaths);
+            const map = {};
+            (groups || []).forEach((g, i) => g.forEach(p => { map[p] = i + 1; }));
+            for (let i = 0; i < files.length; i++) {
+                const g = map[files[i].filePath] || 0;
+                if (files[i].dupeGroup !== g) files[i] = { ...files[i], dupeGroup: g };
+            }
+            files = files;
+            flashOp((groups && groups.length) ? `${groups.length} duplicate group(s) found` : 'No duplicates found');
+        } catch (err) {
+            console.error('find dupes', err);
+            flashOp('Duplicate scan failed');
+        }
+        dupesStatus = '';
+        opBusy = false;
+    }
+
+    // chooseMode routes the Copy/Overwrite choice to either the tag Apply flow
+    // (pendingOp null) or a queued audio op.
+    function chooseMode(mode) {
+        showChoice = false;
+        const op = pendingOp;
+        pendingOp = null;
+        if (!op) { applyWithMode(mode); return; }
+        runAudioOp(op, mode === 'overwrite');
+    }
+
+    async function runAudioOp(op, overwrite) {
+        const paths = targetPaths;
+        if (paths.length === 0) return;
+        opBusy = true;
+        opProgress = {};
+        snapshot('audio');
+        let results = [];
+        try {
+            if (op.type === 'convert') {
+                results = await runConvert(paths, op.ext, op.quality, overwrite);
+            } else if (op.type === 'trim') {
+                const edges = await detectSilenceFor(paths);
+                if (Object.keys(edges).length === 0) {
+                    flashOp('No trimmable silence found');
+                    undoStack.pop(); undoStack = undoStack;
+                    opBusy = false;
+                    return;
+                }
+                results = await runTrim(edges, overwrite);
+            } else if (op.type === 'clean') {
+                results = await CleanID3(paths, overwrite);
+            } else if (op.type === 'repair') {
+                results = await RepairFiles(paths, overwrite);
+            } else if (op.type === 'normalize') {
+                results = await NormalizeFiles(paths, overwrite);
+            }
+            finishAudioOp(op.type, results, overwrite);
+        } catch (err) {
+            console.error('audio op', op.type, err);
+            flashOp(op.type + ' failed');
+            undoStack.pop(); undoStack = undoStack;
+        }
+        opBusy = false;
+        opProgress = {};
+    }
+
+    function finishAudioOp(type, results, overwrite) {
+        results = results || [];
+        const ok = results.filter(r => r.success).length;
+        const errs = results.length - ok;
+
+        if (ok > 0 && undoStack.length > 0) {
+            undoStack[undoStack.length - 1].diskWritten = true;
+            undoStack = undoStack;
+        } else {
+            undoStack.pop(); undoStack = undoStack; // nothing changed on disk
+        }
+
+        flashOp(`${type}: ${ok} done${errs ? `, ${errs} error${errs > 1 ? 's' : ''}` : ''}`
+            + (overwrite ? '' : ' → AudioInk folder'));
+
+        // Overwrite mode: rescan produced files so the table reflects new
+        // names/formats + re-probes health. Copy mode: leave originals.
+        if (overwrite) {
+            const paths = results.filter(r => r.success && (r.newPath || r.filePath))
+                .map(r => r.newPath || r.filePath);
+            setTimeout(() => rescanPaths(paths).then(kickHealth), 400);
+        }
+        selected = new Set();
+    }
 
     let chooserMode = false;
     let confirmMode = false;
@@ -118,11 +286,20 @@
             }
         });
 
+        // Audio features: detect ffmpeg and subscribe to backend events.
+        audioReady = await AudioReady();
+        subscribeAudioEvents({
+            onHealthResult: (e) => applyHealth(e.filePath, e.health),
+            onProgress: (e) => { opProgress = { ...opProgress, [e.filePath]: e.pct }; },
+            onDupesProgress: (e) => { dupesStatus = `Fingerprinting ${e.done}/${e.total}`; },
+        });
+
         // Load files passed from context menu → "Open in AudioInk"
         const initial = await GetInitialFiles();
         if (initial && initial.length > 0) {
             files = initial;
             resetState();
+            kickHealth();
         }
     });
 
@@ -136,6 +313,7 @@
                 snapshot('load');
                 files = results;
                 resetState();
+                kickHealth();
                 return;
             }
 
@@ -147,6 +325,7 @@
 
             snapshot('drop');
             files = [...files, ...incoming];
+            kickHealth();
 
             // If a previous batch was already applied, re-enable the Apply
             // button so the user can process the newly-added files. The old
@@ -169,6 +348,7 @@
                 snapshot('select');
                 files = results;
                 resetState();
+                kickHealth();
             }
         } catch (err) {
             console.error('file select error:', err);
@@ -182,6 +362,7 @@
                 snapshot('select');
                 files = results;
                 resetState();
+                kickHealth();
             }
         } catch (err) {
             console.error('folder select error:', err);
@@ -209,6 +390,7 @@
     }
 
     function promptApply() {
+        pendingOp = null; // tag Apply, not an audio op
         showChoice = true;
     }
 
@@ -366,6 +548,7 @@
             if (results && results.length > 0) {
                 files = results;
                 resetState();
+                kickHealth();
             }
         } catch (err) {
             console.error('rescan error:', err);
@@ -396,6 +579,7 @@
             case 'select':         return 'select';
             case 'clear':          return 'clear';
             case 'apply':          return 'apply';
+            case 'audio':          return 'audio operation';
             default:               return kind || 'action';
         }
     }
@@ -420,22 +604,29 @@
             const snap = undoStack.pop();
             // The redo entry carries the kind+diskWritten of the action
             // we just undid, so Redo knows whether to re-call RedoLast.
-            redoStack.push(captureCurrent(snap.kind, snap.diskWritten));
-            if (redoStack.length > MAX_UNDO) redoStack.shift();
+            // Destructive audio ops are undo-only (backend can't safely redo a
+            // transcode from a consumed backup), so we don't offer redo for them.
+            if (snap.kind !== 'audio') {
+                redoStack.push(captureCurrent(snap.kind, snap.diskWritten));
+                if (redoStack.length > MAX_UNDO) redoStack.shift();
+                redoStack = redoStack;
+            }
             undoStack = undoStack; // reactivity (see snapshot())
-            redoStack = redoStack;
 
-            if (snap.kind === 'apply' && snap.diskWritten) {
+            // Any snapshot that wrote to disk (tag apply OR a destructive audio
+            // op) reverts via backend UndoLast.
+            if (snap.diskWritten) {
                 try {
                     await UndoLast();
                 } catch (err) {
-                    console.warn('apply undo (disk):', err);
+                    console.warn('undo (disk):', err);
                 }
             }
 
             files = snap.files;
             done = snap.done;
             applyMode = snap.applyMode;
+            selected = new Set();
 
             undoMessage = `Undo: ${describeAction(snap.kind)}`;
             setTimeout(() => undoMessage = '', 2500);
@@ -531,25 +722,54 @@
             </div>
         {/if}
 
-        <FileTable {files} showStatus={done} pendingArtist={done ? '' : bulkArtist.trim()} pendingTitle={done ? '' : bulkTitle.trim()} on:update={handleUpdate} />
+        <AudioToolbar
+            count={files.length}
+            selectedCount={selected.size}
+            {audioReady}
+            busy={opBusy}
+            on:convert={opConvert}
+            on:normalize={opNormalize}
+            on:trim={opTrim}
+            on:clean={opClean}
+            on:repair={opRepair}
+            on:deepScan={opDeepScan}
+            on:findDupes={opFindDupes}
+        />
+
+        <FileTable
+            {files}
+            showStatus={done}
+            pendingArtist={done ? '' : bulkArtist.trim()}
+            pendingTitle={done ? '' : bulkTitle.trim()}
+            {selected}
+            activePath={previewFile ? previewFile.filePath : ''}
+            on:update={handleUpdate}
+            on:toggle={e => toggleSelect(e.detail)}
+            on:toggleAll={e => toggleAll(e.detail)}
+            on:play={e => playFile(e.detail)}
+        />
 
         {#if showChoice}
-            <div class="choice-overlay" on:click|self={() => showChoice = false}>
+            <div class="choice-overlay" on:click|self={() => { showChoice = false; pendingOp = null; }}>
                 <div class="choice-dialog">
-                    <p class="choice-title">How should files be saved?</p>
-                    <button class="choice-btn choice-copy" on:click={() => applyWithMode('copy')}>
+                    <p class="choice-title">
+                        {pendingOp ? opTitle(pendingOp) : 'How should files be saved?'}
+                    </p>
+                    <button class="choice-btn choice-copy" on:click={() => chooseMode('copy')}>
                         <span class="choice-icon">&#128230;</span>
                         <span class="choice-label">Save copies</span>
-                        <span class="choice-desc">Originals stay untouched, copies go to AudioInk folder</span>
+                        <span class="choice-desc">Originals stay untouched, results go to AudioInk folder</span>
                     </button>
-                    <button class="choice-btn choice-overwrite" on:click={() => applyWithMode('overwrite')}>
+                    <button class="choice-btn choice-overwrite" on:click={() => chooseMode('overwrite')}>
                         <span class="choice-icon">&#9998;</span>
                         <span class="choice-label">Fix originals</span>
-                        <span class="choice-desc">Rename and tag original files in place</span>
+                        <span class="choice-desc">{pendingOp ? 'Modify original files in place (undoable)' : 'Rename and tag original files in place'}</span>
                     </button>
                 </div>
             </div>
         {/if}
+
+        <Player file={previewFile} on:close={() => previewFile = null} />
 
         <footer class="statusbar">
             <div class="stats">
@@ -569,6 +789,11 @@
                 {/if}
             </div>
             <div class="actions">
+                {#if opBusy}
+                    <span class="undo-msg">{dupesStatus || `Working… ${opPct}%`}</span>
+                {:else if opMessage}
+                    <span class="undo-msg">{opMessage}</span>
+                {/if}
                 {#if undoMessage}
                     <span class="undo-msg">{undoMessage}</span>
                 {/if}

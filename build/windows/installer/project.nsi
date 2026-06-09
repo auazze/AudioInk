@@ -158,6 +158,15 @@ Section
     # Copy icon for context menu (avoids loading 14MB exe for icon extraction)
     File "/oname=icon.ico" "..\icon.ico"
 
+    # Bundle the audio toolchain next to AudioInk.exe. The app resolves these
+    # by absolute path (dir of os.Executable()), so they MUST sit in $INSTDIR
+    # — context-menu launches run from an arbitrary CWD, not from here.
+    #   ffmpeg/ffprobe → transcode, loudness, silence, health, repair
+    #   fpcalc         → local duplicate detection (Chromaprint)
+    File "/oname=ffmpeg.exe"  "..\..\bin\ffmpeg.exe"
+    File "/oname=ffprobe.exe" "..\..\bin\ffprobe.exe"
+    File "/oname=fpcalc.exe"  "..\..\bin\fpcalc.exe"
+
     CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
     CreateShortCut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
 

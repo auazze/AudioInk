@@ -16,6 +16,16 @@ type HistoryEntry struct {
 	NewPath      string      `json:"newPath"`
 	OriginalTags tagger.Tags `json:"originalTags"`
 	NewTags      tagger.Tags `json:"newTags"`
+
+	// BackupPath is set ONLY for byte-destructive ops (convert/trim/remux) in
+	// Overwrite mode: it points to a copy of the original file made before the
+	// op ran. Undo restores those bytes. Empty for tag-only ops, whose undo
+	// goes through the OriginalTags rewrite path.
+	BackupPath string `json:"backupPath,omitempty"`
+
+	// DeleteOnUndo is set for byte-destructive ops in Copy mode: the original
+	// was never touched, so undo just removes the produced copy (NewPath).
+	DeleteOnUndo bool `json:"deleteOnUndo,omitempty"`
 }
 
 type HistoryBatch struct {
@@ -134,6 +144,28 @@ func undoLastBatch() ([]string, error) {
 				continue
 			}
 
+			// Byte-destructive op (convert/trim/remux, Overwrite mode): restore
+			// the original bytes from the backup instead of just rewriting tags.
+			if entry.BackupPath != "" {
+				if finalPath, ok := restoreBackup(entry); ok {
+					paths = append(paths, finalPath)
+				}
+				continue
+			}
+
+			// Destructive op in Copy mode: original untouched, so undo just
+			// removes the produced copy. Report the (still-present) original so
+			// the batch isn't treated as stale and the UI can rescan it.
+			if entry.DeleteOnUndo {
+				if err := os.Remove(currentPath); err != nil && !os.IsNotExist(err) {
+					logger.Printf("  undo(copy-destructive) remove %s: %v", filepath.Base(currentPath), err)
+				} else {
+					logger.Printf("  undone(copy-destructive): removed %s", filepath.Base(currentPath))
+				}
+				paths = append(paths, entry.OriginalPath)
+				continue
+			}
+
 			if err := tagger.Write(currentPath, entry.OriginalTags); err != nil {
 				logger.Printf("  undo tag error %s: %v", filepath.Base(currentPath), err)
 				continue
@@ -192,6 +224,12 @@ func redoLastBatch() ([]string, error) {
 
 		for _, entry := range batch.Entries {
 			srcPath := entry.OriginalPath
+
+			// Destructive ops (convert/trim/remux) are not redoable — the backup
+			// was consumed on undo, and re-running a transcode is unsafe. Skip.
+			if entry.BackupPath != "" || entry.DeleteOnUndo {
+				continue
+			}
 
 			if _, err := os.Stat(srcPath); os.IsNotExist(err) {
 				logger.Printf("  redo skip (missing): %s", filepath.Base(srcPath))
