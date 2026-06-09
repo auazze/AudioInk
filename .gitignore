@@ -1,5 +1,4 @@
 build/bin/*
-!build/bin/AudioInk-amd64-installer.exe
 .claude/
 docs/
 build/README.md
