@@ -152,6 +152,15 @@ Without arguments, AudioInk opens the GUI as usual.
 
 ## Parser Features
 
+Parser package layout: `parser.go` (pipeline, splitting, confidence), `normalize.go` (punctuation/junk/site-prefix/yt-id normalization), `titlecase.go` (TitleCase), `clean.go` (CleanMetadata for tag values).
+
+- Unicode punctuation normalized early (【】→[], （）→(), full-width/em/en dashes → `-`)
+- Download-site prefixes stripped (`y2mate.com - `, `[Mp3Juices.cc]`) — narrow TLD list so `will.i.am` survives
+- yt-dlp `[videoid]` suffixes stripped (shape-checked: 11 chars + digit + mixed case/`-_`)
+- YouTube junk stripped bracketed or not: `(Lyrics)`, `(Visualizer)`, `(MV)`, `(1080p)`, `Title Official Video` → `Title` (bare "video"/"audio" deliberately not stripped — "Video Games" survives)
+- Quoted titles as structure: `Кино «Группа крови»`, `米津玄師「Lemon」` → artist/title split; quotes unwrapped after normal splits too
+- `(with X)` treated as featuring (Spotify style); featured artists deduped
+- Letterless artist (`2024 - Title`) scores Low confidence
 - Per-word Title Case (ALL CAPS/lowercase words → Title Case, abbreviations DJ/NF/MC preserved, mixed case untouched)
 - Trailing suffix stripping (`_01` track suffixes, `-21498` garbage IDs, hex IDs)
 - Underscore filenames: `artist_name_title.mp3` → heuristic artist/title split (Confidence=Low)
