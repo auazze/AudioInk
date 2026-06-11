@@ -7,7 +7,9 @@
 [![CI](https://github.com/auazze/AudioInk/actions/workflows/ci.yml/badge.svg)](https://github.com/auazze/AudioInk/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Lightweight desktop app that fixes audio file metadata. Parses filenames like `Artist - Song (feat. Someone).mp3` and writes correct ID3/Vorbis tags — artist, title, track number — then saves a clean copy with a proper filename. Works as a GUI app or headless via `--fix` flag with right-click context menu integration on all platforms. Bundled FFmpeg adds a preview player, health checks, format conversion, silence trimming, repair, loudness normalization, and duplicate detection.
+Lightweight desktop app that fixes audio file metadata. Parses filenames like `Artist - Song (feat. Someone).mp3` and writes correct ID3/Vorbis tags — artist, title, track number — then saves a clean copy with a proper filename. Works as a GUI app or headless via `--fix` flag with right-click context menu integration. Bundled FFmpeg adds a preview player, health checks, format conversion, silence trimming, repair, loudness normalization, and duplicate detection.
+
+**Platform support:** Windows is the primary, tested platform with a [prebuilt installer](https://github.com/auazze/AudioInk/releases/latest). macOS and Linux build scripts and context-menu integrations exist (`build/darwin/`, `build/linux/`) but are **untested** — I have no Apple/Linux hardware to verify them. Bug reports and PRs welcome.
 
 ## Why
 
@@ -22,7 +24,7 @@ Audio files often have filenames like `01. Tomoya Ohtani-Break Through It All (f
 | `DJ Snake feat. Lil Jon - Turn Down for What (Remix).mp3` | `DJ Snake & Lil Jon - Turn Down for What (Remix).mp3` | DJ Snake & Lil Jon | Turn Down for What (Remix) |
 | `Кино - Группа крови.mp3` | `Кино - Группа Крови.mp3` | Кино | Группа Крови |
 | `aleksandr_novikov_roza_713893675_456239280.mp3` | `Aleksandr Novikov - Roza.mp3` | Aleksandr Novikov | Roza |
-| `~~~~.mp3` | Manual entry dialog | User-provided | User-provided |
+| `~~~~.mp3` | Flagged for review — you enter Artist + Title | User-provided | User-provided |
 
 ### Parser handles
 
@@ -39,7 +41,7 @@ Audio files often have filenames like `01. Tomoya Ohtani-Break Through It All (f
 - **Underscore filenames**: `artist_name_title.mp3` — underscores replaced, heuristic artist/title split
 - **Title Case**: per-word normalization, preserves abbreviations (DJ, NF, MC), stylized names (P!nk, A$AP, will.i.am), Roman numerals, mixed case (McDonald)
 - **Confidence scoring**: high/medium/low — uncertain parses highlighted for review
-- **Garbage filenames**: pure garbage (`~~~~.mp3`, `12345678.mp3`) triggers manual entry dialog
+- **Garbage filenames**: pure garbage (`~~~~.mp3`, `12345678.mp3`) is flagged for review — inline edit in the GUI, confirm window in CLI mode
 
 ### Audio toolbox (bundled FFmpeg)
 
@@ -71,7 +73,13 @@ MP3, FLAC, OGG, M4A, WAV, WMA, OPUS
 | Frontend | Svelte |
 | Audio tags | [go-taglib](https://pkg.go.dev/go.senan.xyz/taglib) (TagLib via Wasm, no CGo) |
 
-## Build & Install
+## Download
+
+**Windows**: grab `AudioInk-amd64-installer.exe` from the [latest release](https://github.com/auazze/AudioInk/releases/latest) — it bundles FFmpeg/Chromaprint, adds the right-click "AudioInk Fix" context menu, and handles reinstall/uninstall.
+
+**macOS / Linux**: no prebuilt binaries — build from source below (untested, see Platform support).
+
+## Build from source
 
 Requirements: Go 1.23+, Node.js, [Wails CLI](https://wails.io/docs/gettingstarted/installation)
 
@@ -94,17 +102,20 @@ go test ./...
 
 Binary output: `build/bin/AudioInk` (or `AudioInk.exe` on Windows)
 
+**FFmpeg note**: the audio toolbox shells out to `ffmpeg`, `ffprobe` and `fpcalc` (Chromaprint), resolved next to the executable first, then on PATH. The Windows installer bundles all three; a source build needs them installed yourself (`choco install ffmpeg` / `apt install ffmpeg`, fpcalc from [Chromaprint releases](https://github.com/acoustid/chromaprint/releases)) — without them the tag fixing works fine and the audio features just stay disabled.
+
 ### Windows installer
 
-Requires [NSIS](https://nsis.sourceforge.io/Download) in PATH.
+Requires [NSIS](https://nsis.sourceforge.io/Download) in PATH. The NSIS script bundles `ffmpeg.exe`, `ffprobe.exe` and `fpcalc.exe` from `build/bin/` — they are **not in git**, so stage them there first or the build fails on the `File` directives:
 
 ```bash
+cp /path/to/ffmpeg.exe /path/to/ffprobe.exe /path/to/fpcalc.exe build/bin/
 wails build --nsis
 ```
 
 Creates `build/bin/AudioInk-amd64-installer.exe` — installs the app, adds right-click context menu for audio files ("AudioInk Fix"), handles reinstall/uninstall via registry.
 
-### macOS installer
+### macOS installer (untested)
 
 Build on a Mac, then run the install script:
 
@@ -115,7 +126,7 @@ bash build/darwin/install.sh
 
 Copies `AudioInk.app` to `/Applications` and installs a Finder Quick Action (right-click menu). Detects existing installation, offers reinstall/uninstall.
 
-### Linux installer
+### Linux installer (untested)
 
 Build on Linux, then run the install script:
 
@@ -132,9 +143,9 @@ Installs the binary and adds context menus for Nautilus (GNOME), Dolphin (KDE), 
 
 1. Launch AudioInk
 2. Drag & drop audio files onto the window, or use **Select files** / **Select folder**
-3. If any files have garbage names, a manual entry dialog pops up — enter Artist + Title or skip
-4. Review parsed results in the table — double-click to edit artist/title
-5. Click **Apply Tags** — choose **Save copies** or **Fix originals**
+3. Review parsed results in the table — uncertain parses get a **Review** badge; double-click any row to edit artist/title inline, or fill the bulk Artist/Title fields
+4. Optional: preview in the player, run a health check, convert/trim/repair/normalize from the audio toolbar
+5. Click **Apply Tags** — choose **Save copies** or **Fix originals** (destructive ops are undoable)
 6. For copies: find clean files in `AudioInk/` next to your originals
 
 ### CLI
@@ -143,7 +154,7 @@ Installs the binary and adds context menus for Nautilus (GNOME), Dolphin (KDE), 
 AudioInk --fix file1.mp3 file2.flac ...
 ```
 
-Runs headless: parses filenames, writes tags, renames files in place. For garbage filenames, a native OS dialog (PowerShell WinForms / zenity / osascript) prompts for Artist + Title. Also used by right-click context menu integrations.
+Runs headless: parses filenames, writes tags, renames files in place. Uncertain filenames open a single AudioInk-styled confirm window (all flagged files at once, prefilled with the parser's best guess) — confirm, edit, or skip. This is the mode the right-click context menu uses.
 
 ## License
 
