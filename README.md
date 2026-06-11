@@ -4,7 +4,10 @@
 
 # AudioInk
 
-Lightweight desktop app that fixes audio file metadata. Parses filenames like `Artist - Song (feat. Someone).mp3` and writes correct ID3/Vorbis tags — artist, title, track number — then saves a clean copy with a proper filename. Works as a GUI app or headless via `--fix` flag with right-click context menu integration on all platforms.
+[![CI](https://github.com/auazze/AudioInk/actions/workflows/ci.yml/badge.svg)](https://github.com/auazze/AudioInk/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+Lightweight desktop app that fixes audio file metadata. Parses filenames like `Artist - Song (feat. Someone).mp3` and writes correct ID3/Vorbis tags — artist, title, track number — then saves a clean copy with a proper filename. Works as a GUI app or headless via `--fix` flag with right-click context menu integration on all platforms. Bundled FFmpeg adds a preview player, health checks, format conversion, silence trimming, repair, loudness normalization, and duplicate detection.
 
 ## Why
 
@@ -23,17 +26,32 @@ Audio files often have filenames like `01. Tomoya Ohtani-Break Through It All (f
 
 ### Parser handles
 
-- **Separators**: ` - `, ` — `, ` – `, `_-_`, `+-+`, `--`, `==`, bare dashes
-- **Featured artists**: `feat.`, `ft.`, `featuring` — merged with `&`
-- **Track numbers**: `01.`, `01 -`, `#01`, `01_` — stripped
-- **Extras**: `(Remix)`, `(Live)`, `(Acoustic)`, `[Explicit]` — kept in title
-- **Junk extras**: bitrate tags (`320kbps`), format tags (`FLAC`), URLs, `official video` — stripped
+- **Separators**: ` - `, ` — `, ` – `, `_-_`, `+-+`, `--`, `==`, ` | `, ` • `, bare dashes; em/en dash and full-width CJK punctuation normalized
+- **Featured artists**: `feat.`, `ft.`, `featuring`, `(with X)` — merged with `&`, deduplicated
+- **Track numbers**: `01.`, `01 -`, `#01`, `01_`, `Disc 1 Track 03` — stripped
+- **Extras**: `(Remix)`, `(Live)`, `(Acoustic)`, `[Explicit]`, `(Slowed + Reverb)` — kept in title
+- **Junk extras**: bitrate/format tags (`320kbps`, `FLAC`), URLs, YouTube noise (`Official Video`, `Lyrics`, `Visualizer`, `MV`, `1080p`, `NCS Release`, `Sub Español`) — stripped, bracketed or not
+- **yt-dlp suffixes**: `Title [dQw4w9WgXcQ].mp3` — video-id stripped (real extras like `[Instrumental]` survive)
+- **Download-site prefixes**: `y2mate.com - `, `[Mp3Juices.cc]`, `www.site.net_` — stripped (artists like `will.i.am` survive)
+- **Quoted titles**: `Кино «Группа крови».mp3`, `米津玄師「Lemon」.mp3` — quotes treated as artist/title structure
 - **Copy suffixes**: `— копия`, `- Copy`, `(2)` — stripped
-- **Garbage IDs**: trailing numeric/hex IDs from VK/SoundCloud — stripped
+- **Garbage IDs**: trailing numeric/hex IDs from VK/SoundCloud — stripped (years like `1999` survive)
 - **Underscore filenames**: `artist_name_title.mp3` — underscores replaced, heuristic artist/title split
-- **Title Case**: per-word normalization, preserves abbreviations (DJ, NF, MC) and mixed case (McDonald)
+- **Title Case**: per-word normalization, preserves abbreviations (DJ, NF, MC), stylized names (P!nk, A$AP, will.i.am), Roman numerals, mixed case (McDonald)
 - **Confidence scoring**: high/medium/low — uncertain parses highlighted for review
 - **Garbage filenames**: pure garbage (`~~~~.mp3`, `12345678.mp3`) triggers manual entry dialog
+
+### Audio toolbox (bundled FFmpeg)
+
+- **Preview player** — listen before applying, with non-destructive ReplayGain A/B
+- **Health check** — codec-vs-extension mismatch, missing cover, deep scan for silence/clipping/transcode suspicion
+- **Convert** — between MP3/FLAC/OGG/M4A/WAV/OPUS
+- **Trim silence** — detect and cut leading/trailing silence
+- **Repair** — remux broken streams
+- **Normalize loudness** — EBU R128 measurement written as a ReplayGain tag (no re-encode)
+- **Clean tags** — strip junk/duplicate tag blocks
+- **Duplicate finder** — Chromaprint audio fingerprinting, fully offline
+- **Undo** — destructive ops back up original bytes; one click restores
 
 ### Two save modes
 
@@ -126,3 +144,7 @@ AudioInk --fix file1.mp3 file2.flac ...
 ```
 
 Runs headless: parses filenames, writes tags, renames files in place. For garbage filenames, a native OS dialog (PowerShell WinForms / zenity / osascript) prompts for Artist + Title. Also used by right-click context menu integrations.
+
+## License
+
+[MIT](LICENSE)

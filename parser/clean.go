@@ -62,6 +62,8 @@ func CleanMetadata(artist, title string) (cleanArtist, cleanTitle string, featur
 		var inlineFeat []string
 		_, cleanTitle, inlineFeat = extractFeaturedInline("", cleanTitle, nil)
 		featured = append(featured, inlineFeat...)
+		// Strip unbracketed converter junk ("Song Official Video" → "Song")
+		cleanTitle = stripTrailingJunkPhrases(cleanTitle)
 		// No titleCase — metadata casing is intentional
 		// Trim garbage
 		cleanTitle = trimGarbageEdges(cleanTitle)
@@ -72,5 +74,6 @@ func CleanMetadata(artist, title string) (cleanArtist, cleanTitle string, featur
 		}
 	}
 
+	featured = dedupeArtists(featured)
 	return
 }
